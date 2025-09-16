@@ -48,12 +48,8 @@ def main():
         print('\n🧪 Тестируем генерацию...')
         messages = [
             {
-                "role": "system",
-                "content": [{"type": "text", "text": "You are a helpful medical assistant. Answer in Russian."}]
-            },
-            {
                 "role": "user",
-                "content": [{"type": "text", "text": "What is pneumonia?"}]
+                "content": [{"type": "text", "text": "Hello! How are you?"}]
             }
         ]
         
@@ -79,8 +75,22 @@ def main():
             generation = generation[0][input_len:]
         
         print(f'📏 Сгенерировано: {len(generation)} токенов')
+        
+        # Проверяем что генерируется
+        print(f'🔍 Первые 10 токенов: {generation[:10].tolist()}')
+        
+        # Декодируем без пропуска специальных токенов
+        result_raw = processor.decode(generation, skip_special_tokens=False)
+        print(f'📝 Сырой результат (с токенами): "{result_raw}"')
+        
+        # Декодируем с пропуском специальных токенов
         result = processor.decode(generation, skip_special_tokens=True)
-        print(f'📝 Сырой результат: "{result}"')
+        print(f'📝 Очищенный результат: "{result}"')
+        
+        # Если результат пустой, пробуем другой способ
+        if not result.strip():
+            result = processor.tokenizer.decode(generation, skip_special_tokens=True)
+            print(f'📝 Альтернативный результат: "{result}"')
         
         print(f'\n📋 РЕЗУЛЬТАТ:')
         print('=' * 40)
