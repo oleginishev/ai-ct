@@ -28,4 +28,4 @@ ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
 ENV CUDA_LAUNCH_BLOCKING=1
 
 # Команда по умолчанию
-CMD ["python3", "medgemma_official.py"]
+CMD ["python3", "medgemma_optimized.py"]

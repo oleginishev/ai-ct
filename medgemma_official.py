@@ -30,13 +30,23 @@ def main():
         print(f'💾 Память: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
     
     try:
-        # Создаем pipeline точно как в документации
-        print('🔄 Создаем pipeline...')
+        # Очищаем память GPU перед загрузкой
+        if device == "cuda":
+            torch.cuda.empty_cache()
+            print('🧹 Очистили память GPU')
+        
+        # Создаем pipeline с оптимизацией памяти
+        print('🔄 Создаем pipeline с оптимизацией памяти...')
         pipe = pipeline(
             "image-text-to-text",
             model=MODEL_PATH,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.float16,  # Используем float16 вместо bfloat16 для экономии памяти
             device=device,
+            model_kwargs={
+                "low_cpu_mem_usage": True,
+                "device_map": "auto",  # Автоматическое распределение по устройствам
+                "torch_dtype": torch.float16,
+            }
         )
         
         print('✅ Pipeline создан!')
