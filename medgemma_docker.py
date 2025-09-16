@@ -122,21 +122,31 @@ def medical_qa_gpu(model, processor, device, question):
     print(f'\n❓ Медицинский вопрос: {question}')
     
     try:
-        # Формируем промпт на русском
-        prompt = f"""Вы эксперт-медик. Пожалуйста, ответьте на следующий медицинский вопрос точно и профессионально на русском языке:
-
-Вопрос: {question}
-
-Ответ:"""
+        # Формируем промпт в формате чата
+        messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": "Вы эксперт-медик. Отвечайте на медицинские вопросы точно и профессионально на русском языке."}]
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": question}]
+            }
+        ]
         
-        # Токенизируем
-        inputs = processor.tokenizer(prompt, return_tensors="pt")
+        # Используем chat template
+        inputs = processor.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=True,
+            return_dict=True, return_tensors="pt"
+        )
         
         # Перемещаем на GPU
         if device == "cuda":
             inputs = {k: v.to(device) for k, v in inputs.items()}
         
         print('🔍 Обрабатываем вопрос на GPU...')
+        input_len = inputs["input_ids"].shape[-1]
+        
         with torch.inference_mode():
             generation = model.generate(
                 **inputs, 
@@ -145,9 +155,9 @@ def medical_qa_gpu(model, processor, device, question):
                 pad_token_id=processor.tokenizer.eos_token_id,
                 use_cache=True
             )
-            generation = generation[0][inputs["input_ids"].shape[-1]:]
+            generation = generation[0][input_len:]
         
-        result = processor.tokenizer.decode(generation, skip_special_tokens=True)
+        result = processor.decode(generation, skip_special_tokens=True)
         
         print('\n📋 ОТВЕТ (GPU):')
         print('=' * 60)
