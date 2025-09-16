@@ -41,7 +41,7 @@ def main():
             "image-text-to-text",
             model=MODEL_PATH,
             dtype=torch.float16,  # Используем float16 вместо bfloat16 для экономии памяти
-            device=device,
+            # Убираем device, так как device_map="auto" управляет размещением
             model_kwargs={
                 "low_cpu_mem_usage": True,
                 "device_map": "auto",  # Автоматическое распределение по устройствам
