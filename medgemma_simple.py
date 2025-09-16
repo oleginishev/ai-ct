@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Простая проверка MedGemma в Docker
+MedGemma с правильным pipeline
 """
 
 import os
 import torch
-from transformers import AutoProcessor, AutoModelForImageTextToText
+from transformers import pipeline
+from PIL import Image
+import requests
 
 MODEL_PATH = "/app/models/medgemma_4b"
 
 def main():
-    """Простая проверка"""
-    print('🏥 MedGemma 4B - Простая проверка')
+    """Правильная проверка с pipeline"""
+    print('🏥 MedGemma 4B - Pipeline проверка')
     print('=' * 50)
     
     # Проверяем модель
@@ -28,94 +30,46 @@ def main():
         print(f'💾 Память: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
     
     try:
-        # Загружаем модель
-        print('🔄 Загружаем модель...')
-        processor = AutoProcessor.from_pretrained(MODEL_PATH)
-        model = AutoModelForImageTextToText.from_pretrained(
-            MODEL_PATH,
-            dtype=torch.float16,
-            device_map="auto" if device == "cuda" else None,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True
+        # Создаем pipeline
+        print('🔄 Создаем pipeline...')
+        pipe = pipeline(
+            "image-text-to-text",
+            model=MODEL_PATH,
+            torch_dtype=torch.bfloat16,
+            device=device,
         )
         
-        if device == "cpu":
-            model = model.to(device)
+        print('✅ Pipeline создан!')
         
-        print('✅ Модель загружена!')
+        # Загружаем изображение
+        print('\n📷 Загружаем изображение...')
+        image_url = "https://upload.wikimedia.org/wikipedia/commons/c/c8/Chest_Xray_PA_3-8-2010.png"
+        image = Image.open(requests.get(image_url, headers={"User-Agent": "example"}, stream=True).raw)
         
-        # Простой тест
-        print('\n🧪 Тестируем генерацию...')
+        # Формируем сообщения
         messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": "You are a helpful medical assistant."}]
+                "content": [{"type": "text", "text": "You are an expert radiologist."}]
             },
             {
                 "role": "user",
-                "content": [{"type": "text", "text": "What is pneumonia?"}]
+                "content": [
+                    {"type": "text", "text": "Describe this X-ray"},
+                    {"type": "image", "image": image}
+                ]
             }
         ]
         
-        inputs = processor.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=True,
-            return_dict=True, return_tensors="pt"
-        )
-        
-        if device == "cuda":
-            inputs = {k: v.to(device) for k, v in inputs.items()}
-        
-        input_len = inputs["input_ids"].shape[-1]
-        print(f'📏 Длина входа: {input_len} токенов')
-        
-        # Проверяем входные токены
-        input_tokens = inputs["input_ids"][0].tolist()
-        print(f'🔍 Входные токены: {input_tokens}')
-        print(f'🔍 Входной текст: "{processor.decode(input_tokens, skip_special_tokens=False)}"')
-        
-        # Проверяем специальные токены
-        print(f'🔍 EOS token: {processor.tokenizer.eos_token_id}')
-        print(f'🔍 PAD token: {processor.tokenizer.pad_token_id}')
-        
-        with torch.inference_mode():
-            generation = model.generate(
-                **inputs,
-                max_new_tokens=100,
-                do_sample=False,
-                pad_token_id=processor.tokenizer.pad_token_id,
-                eos_token_id=processor.tokenizer.eos_token_id,
-                use_cache=True,
-                output_scores=True,
-                return_dict_in_generate=True
-            )
-            # Извлекаем только сгенерированные токены
-            if hasattr(generation, 'sequences'):
-                generation = generation.sequences[0][input_len:]
-            else:
-                generation = generation[0][input_len:]
-        
-        print(f'📏 Сгенерировано: {len(generation)} токенов')
-        
-        # Проверяем что генерируется
-        print(f'🔍 Первые 10 токенов: {generation[:10].tolist()}')
-        
-        # Декодируем без пропуска специальных токенов
-        result_raw = processor.decode(generation, skip_special_tokens=False)
-        print(f'📝 Сырой результат (с токенами): "{result_raw}"')
-        
-        # Декодируем с пропуском специальных токенов
-        result = processor.decode(generation, skip_special_tokens=True)
-        print(f'📝 Очищенный результат: "{result}"')
-        
-        # Если результат пустой, пробуем другой способ
-        if not result.strip():
-            result = processor.tokenizer.decode(generation, skip_special_tokens=True)
-            print(f'📝 Альтернативный результат: "{result}"')
+        # Генерируем ответ
+        print('\n🧪 Тестируем генерацию...')
+        output = pipe(text=messages, max_new_tokens=200)
+        result = output[0]["generated_text"][-1]["content"]
         
         print(f'\n📋 РЕЗУЛЬТАТ:')
-        print('=' * 40)
+        print('=' * 50)
         print(result)
-        print('=' * 40)
+        print('=' * 50)
         
         print('\n🎉 MedGemma работает!')
         
