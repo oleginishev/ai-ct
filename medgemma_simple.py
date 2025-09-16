@@ -77,12 +77,9 @@ def main():
             generation = model.generate(
                 **inputs,
                 max_new_tokens=50,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
+                do_sample=False,  # Отключаем sampling для избежания ошибок
                 pad_token_id=processor.tokenizer.pad_token_id,
-                eos_token_id=processor.tokenizer.eos_token_id,
-                repetition_penalty=1.1
+                eos_token_id=processor.tokenizer.eos_token_id
             )
             generation = generation[0][input_len:]
         
