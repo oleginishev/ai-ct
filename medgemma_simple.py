@@ -48,8 +48,12 @@ def main():
         print('\n🧪 Тестируем генерацию...')
         messages = [
             {
+                "role": "system",
+                "content": [{"type": "text", "text": "You are a helpful medical assistant. Answer in Russian."}]
+            },
+            {
                 "role": "user",
-                "content": [{"type": "text", "text": "Привет! Как дела?"}]
+                "content": [{"type": "text", "text": "What is pneumonia?"}]
             }
         ]
         
@@ -62,17 +66,21 @@ def main():
             inputs = {k: v.to(device) for k, v in inputs.items()}
         
         input_len = inputs["input_ids"].shape[-1]
+        print(f'📏 Длина входа: {input_len} токенов')
         
         with torch.inference_mode():
             generation = model.generate(
                 **inputs,
-                max_new_tokens=50,
+                max_new_tokens=100,
                 do_sample=False,
-                pad_token_id=processor.tokenizer.eos_token_id
+                pad_token_id=processor.tokenizer.eos_token_id,
+                eos_token_id=processor.tokenizer.eos_token_id
             )
             generation = generation[0][input_len:]
         
+        print(f'📏 Сгенерировано: {len(generation)} токенов')
         result = processor.decode(generation, skip_special_tokens=True)
+        print(f'📝 Сырой результат: "{result}"')
         
         print(f'\n📋 РЕЗУЛЬТАТ:')
         print('=' * 40)
