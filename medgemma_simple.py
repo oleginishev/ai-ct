@@ -35,7 +35,6 @@ def main():
         pipe = pipeline(
             "image-text-to-text",
             model=MODEL_PATH,
-            device=device,
             model_kwargs={
                 "low_cpu_mem_usage": True,
                 "device_map": "auto",
