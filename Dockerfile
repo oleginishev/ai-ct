@@ -27,4 +27,4 @@ ENV CUDA_VISIBLE_DEVICES=0
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Команда по умолчанию
-CMD ["python3", "medgemma_docker.py"]
+CMD ["python3", "medgemma_simple.py"]

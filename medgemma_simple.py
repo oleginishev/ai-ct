@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Простой тест генерации MedGemma
+Простая проверка MedGemma в Docker
 """
 
 import os
@@ -9,15 +9,27 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 
 MODEL_PATH = "/app/models/medgemma_4b"
 
-def test_simple_generation():
-    """Простой тест генерации"""
-    print('🧪 Тестируем простую генерацию...')
+def main():
+    """Простая проверка"""
+    print('🏥 MedGemma 4B - Простая проверка')
+    print('=' * 50)
+    
+    # Проверяем модель
+    if not os.path.exists(MODEL_PATH):
+        print(f'❌ Модель не найдена в {MODEL_PATH}')
+        return
+    
+    # Проверяем GPU
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f'🖥️  Устройство: {device}')
+    
+    if device == "cuda":
+        print(f'✅ GPU: {torch.cuda.get_device_name(0)}')
+        print(f'💾 Память: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
     
     try:
         # Загружаем модель
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f'🖥️  Устройство: {device}')
-        
+        print('🔄 Загружаем модель...')
         processor = AutoProcessor.from_pretrained(MODEL_PATH)
         model = AutoModelForImageTextToText.from_pretrained(
             MODEL_PATH,
@@ -33,6 +45,7 @@ def test_simple_generation():
         print('✅ Модель загружена!')
         
         # Простой тест
+        print('\n🧪 Тестируем генерацию...')
         messages = [
             {
                 "role": "user",
@@ -50,7 +63,6 @@ def test_simple_generation():
         
         input_len = inputs["input_ids"].shape[-1]
         
-        print('🔍 Генерируем ответ...')
         with torch.inference_mode():
             generation = model.generate(
                 **inputs,
@@ -67,13 +79,12 @@ def test_simple_generation():
         print(result)
         print('=' * 40)
         
-        return True
+        print('\n🎉 MedGemma работает!')
         
     except Exception as e:
         print(f'❌ Ошибка: {e}')
         import traceback
         traceback.print_exc()
-        return False
 
 if __name__ == "__main__":
-    test_simple_generation()
+    main()
