@@ -66,38 +66,36 @@ def main():
         
         # Генерируем ответ
         print('\n🧪 Тестируем генерацию...')
+        
+        # Используем параметры из официальной документации
         output = pipe(text=messages, max_new_tokens=200)
         
         # Отладочная информация
         print(f"🔍 Debug: output type = {type(output)}")
         print(f"🔍 Debug: output = {output}")
         
-        # Правильная обработка результата в зависимости от формата
+        # Правильная обработка результата согласно документации MedGemma
         result = ""
         if isinstance(output, list) and len(output) > 0:
             first_output = output[0]
-            if isinstance(first_output, dict):
-                if "generated_text" in first_output:
-                    result = first_output["generated_text"]
-                elif "text" in first_output:
-                    result = first_output["text"]
+            if isinstance(first_output, dict) and "generated_text" in first_output:
+                generated_text = first_output["generated_text"]
+                # Согласно документации: output[0]["generated_text"][-1]["content"]
+                if isinstance(generated_text, list) and len(generated_text) > 0:
+                    last_message = generated_text[-1]
+                    if isinstance(last_message, dict) and "content" in last_message:
+                        result = last_message["content"]
+                    else:
+                        result = str(last_message)
                 else:
-                    # Извлекаем текст из любого поля
-                    for key, value in first_output.items():
-                        if isinstance(value, str) and len(value) > 10:
-                            result = value
-                            break
-                    if not result:
-                        result = str(first_output)
+                    result = str(generated_text)
             else:
                 result = str(first_output)
-        elif isinstance(output, str):
-            result = output
         else:
             result = str(output)
         
         # Если результат пустой, попробуем альтернативный подход
-        if not result or result.strip() == "":
+        if not result or (isinstance(result, str) and result.strip() == "") or (isinstance(result, list) and len(result) == 0):
             print("⚠️  Результат пустой, пробуем альтернативный подход...")
             try:
                 # Попробуем другой формат вызова
