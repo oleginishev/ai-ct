@@ -1,5 +1,5 @@
 # Dockerfile для MedGemma с GPU поддержкой
-FROM nvidia/cuda:12.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.0.1-base-ubuntu22.04
 
 # Устанавливаем Python и зависимости
 RUN apt-get update && apt-get install -y \
