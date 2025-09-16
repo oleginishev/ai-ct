@@ -35,12 +35,11 @@ def main():
         pipe = pipeline(
             "image-text-to-text",
             model=MODEL_PATH,
-            dtype=torch.float16,  # Используем float16 вместо bfloat16
             device=device,
             model_kwargs={
                 "low_cpu_mem_usage": True,
                 "device_map": "auto",
-                "torch_dtype": torch.float16
+                "dtype": torch.float16
             }
         )
         
