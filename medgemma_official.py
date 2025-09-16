@@ -45,7 +45,6 @@ def main():
             model_kwargs={
                 "low_cpu_mem_usage": True,
                 "device_map": "auto",  # Автоматическое распределение по устройствам
-                "torch_dtype": torch.float16,
             }
         )
         
