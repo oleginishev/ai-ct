@@ -33,7 +33,7 @@ def main():
         processor = AutoProcessor.from_pretrained(MODEL_PATH)
         model = AutoModelForImageTextToText.from_pretrained(
             MODEL_PATH,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             device_map="auto" if device == "cuda" else None,
             low_cpu_mem_usage=True,
             trust_remote_code=True
