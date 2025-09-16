@@ -67,7 +67,47 @@ def main():
         # Генерируем ответ
         print('\n🧪 Тестируем генерацию...')
         output = pipe(text=messages, max_new_tokens=200)
-        result = output[0]["generated_text"][-1]["content"]
+        
+        # Отладочная информация
+        print(f"🔍 Debug: output type = {type(output)}")
+        print(f"🔍 Debug: output = {output}")
+        
+        # Правильная обработка результата в зависимости от формата
+        result = ""
+        if isinstance(output, list) and len(output) > 0:
+            first_output = output[0]
+            if isinstance(first_output, dict):
+                if "generated_text" in first_output:
+                    result = first_output["generated_text"]
+                elif "text" in first_output:
+                    result = first_output["text"]
+                else:
+                    # Извлекаем текст из любого поля
+                    for key, value in first_output.items():
+                        if isinstance(value, str) and len(value) > 10:
+                            result = value
+                            break
+                    if not result:
+                        result = str(first_output)
+            else:
+                result = str(first_output)
+        elif isinstance(output, str):
+            result = output
+        else:
+            result = str(output)
+        
+        # Если результат пустой, попробуем альтернативный подход
+        if not result or result.strip() == "":
+            print("⚠️  Результат пустой, пробуем альтернативный подход...")
+            try:
+                # Попробуем другой формат вызова
+                simple_output = pipe(image, "Describe this X-ray", max_new_tokens=200)
+                if isinstance(simple_output, list) and len(simple_output) > 0:
+                    result = str(simple_output[0])
+                else:
+                    result = str(simple_output)
+            except Exception as e2:
+                result = f"Ошибка генерации: {e2}"
         
         print(f'\n📋 РЕЗУЛЬТАТ:')
         print('=' * 50)
