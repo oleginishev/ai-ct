@@ -24,7 +24,7 @@ COPY *.py /app/
 
 # Устанавливаем переменные окружения
 ENV CUDA_VISIBLE_DEVICES=0
-ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
 ENV CUDA_LAUNCH_BLOCKING=1
 
 # Команда по умолчанию
