@@ -48,8 +48,12 @@ def main():
         print('\n🧪 Тестируем генерацию...')
         messages = [
             {
+                "role": "system",
+                "content": [{"type": "text", "text": "You are a helpful medical assistant."}]
+            },
+            {
                 "role": "user",
-                "content": [{"type": "text", "text": "Hello! How are you?"}]
+                "content": [{"type": "text", "text": "What is pneumonia?"}]
             }
         ]
         
@@ -76,12 +80,19 @@ def main():
         with torch.inference_mode():
             generation = model.generate(
                 **inputs,
-                max_new_tokens=50,
-                do_sample=False,  # Отключаем sampling для избежания ошибок
+                max_new_tokens=100,
+                do_sample=False,
                 pad_token_id=processor.tokenizer.pad_token_id,
-                eos_token_id=processor.tokenizer.eos_token_id
+                eos_token_id=processor.tokenizer.eos_token_id,
+                use_cache=True,
+                output_scores=True,
+                return_dict_in_generate=True
             )
-            generation = generation[0][input_len:]
+            # Извлекаем только сгенерированные токены
+            if hasattr(generation, 'sequences'):
+                generation = generation.sequences[0][input_len:]
+            else:
+                generation = generation[0][input_len:]
         
         print(f'📏 Сгенерировано: {len(generation)} токенов')
         
