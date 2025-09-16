@@ -99,8 +99,6 @@ def analyze_chest_xray_gpu(model, processor, device, image_path=None):
                 **inputs, 
                 max_new_tokens=200,  # Больше токенов для GPU
                 do_sample=False,
-                temperature=0.1,
-                top_p=0.9,
                 pad_token_id=processor.tokenizer.eos_token_id,
                 use_cache=True
             )
@@ -144,8 +142,6 @@ def medical_qa_gpu(model, processor, device, question):
                 **inputs, 
                 max_new_tokens=150,  # Больше токенов для GPU
                 do_sample=False,
-                temperature=0.1,
-                top_p=0.9,
                 pad_token_id=processor.tokenizer.eos_token_id,
                 use_cache=True
             )

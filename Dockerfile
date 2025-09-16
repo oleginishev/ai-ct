@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
 
 # Устанавливаем Python пакеты
 RUN pip3 install --upgrade pip
-RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-RUN pip3 install transformers accelerate bitsandbytes
+RUN pip3 install torch>=2.6 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+RUN pip3 install transformers>=4.50.0 accelerate bitsandbytes
 RUN pip3 install pillow requests
 
 # Создаем рабочую директорию
