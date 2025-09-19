@@ -1,5 +1,6 @@
 # DICOM Analyzer Dockerfile
-FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+# Используем базовый образ с поддержкой CUDA (можно заменить на ubuntu:22.04 если нет GPU)
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
@@ -10,6 +11,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     git \
+    libgl1-mesa-glx \
+    libsm6 \
+    libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Создание рабочей директории
