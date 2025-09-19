@@ -1,104 +1,32 @@
-#!/usr/bin/env python3
-"""
-MedGemma - Официальный пример из документации
-"""
-
-import os
-import torch
 from transformers import pipeline
 from PIL import Image
 import requests
+import torch
 
-MODEL_PATH = "/app/models/medgemma_4b"
+pipe = pipeline(
+    "image-text-to-text",
+    model="google/medgemma-4b-it",
+    torch_dtype=torch.bfloat16,
+    device="cuda",
+)
 
-def main():
-    """Официальный пример MedGemma"""
-    print('🏥 MedGemma 4B - Официальный пример')
-    print('=' * 50)
-    
-    # Проверяем модель
-    if not os.path.exists(MODEL_PATH):
-        print(f'❌ Модель не найдена в {MODEL_PATH}')
-        return
-    
-    # Проверяем GPU
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f'🖥️  Устройство: {device}')
-    
-    if device == "cuda":
-        print(f'✅ GPU: {torch.cuda.get_device_name(0)}')
-        print(f'💾 Память: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
-    
-    try:
-        # Очищаем память GPU перед загрузкой
-        if device == "cuda":
-            torch.cuda.empty_cache()
-            print('🧹 Очистили память GPU')
-        
-        # Создаем pipeline с оптимизацией памяти
-        print('🔄 Создаем pipeline с оптимизацией памяти...')
-        pipe = pipeline(
-            "image-text-to-text",
-            model=MODEL_PATH,
-            dtype=torch.float16,  # Используем float16 вместо bfloat16 для экономии памяти
-            # Убираем device, так как device_map="auto" управляет размещением
-            model_kwargs={
-                "low_cpu_mem_usage": True,
-                "device_map": "auto",  # Автоматическое распределение по устройствам
-            }
-        )
-        
-        print('✅ Pipeline создан!')
-        
-        # Загружаем изображение точно как в документации
-        print('\n📷 Загружаем изображение...')
-        image_url = "https://upload.wikimedia.org/wikipedia/commons/c/c8/Chest_Xray_PA_3-8-2010.png"
-        image = Image.open(requests.get(image_url, headers={"User-Agent": "example"}, stream=True).raw)
-        
-        # Формируем сообщения точно как в документации
-        messages = [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": "You are an expert radiologist."}]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe this X-ray"},
-                    {"type": "image", "image": image}
-                ]
-            }
+# Image attribution: Stillwaterising, CC0, via Wikimedia Commons
+image_url = "https://upload.wikimedia.org/wikipedia/commons/c/c8/Chest_Xray_PA_3-8-2010.png"
+image = Image.open(requests.get(image_url, headers={"User-Agent": "example"}, stream=True).raw)
+
+messages = [
+    {
+        "role": "system",
+        "content": [{"type": "text", "text": "You are an expert radiologist."}]
+    },
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Describe this X-ray"},
+            {"type": "image", "image": image}
         ]
-        
-        # Генерируем ответ с дополнительными параметрами
-        print('\n🧪 Тестируем генерацию...')
-        output = pipe(
-            text=messages, 
-            max_new_tokens=300,  # Увеличиваем количество токенов
-            do_sample=True,      # Включаем сэмплирование
-            temperature=0.7,     # Добавляем температуру
-            top_p=0.9,          # Добавляем top_p
-        )
-        
-        # Отладочная информация
-        print(f"🔍 Debug: output type = {type(output)}")
-        print(f"🔍 Debug: output = {output}")
-        
-        # Извлекаем результат точно как в документации
-        result = output[0]["generated_text"][-1]["content"]
-        print(f"🔍 Debug: result = '{result}' (type: {type(result)})")
-        
-        print(f'\n📋 РЕЗУЛЬТАТ:')
-        print('=' * 50)
-        print(result)
-        print('=' * 50)
-        
-        print('\n🎉 MedGemma работает!')
-        
-    except Exception as e:
-        print(f'❌ Ошибка: {e}')
-        import traceback
-        traceback.print_exc()
+    }
+]
 
-if __name__ == "__main__":
-    main()
+output = pipe(text=messages, max_new_tokens=200)
+print(output[0]["generated_text"][-1]["content"])

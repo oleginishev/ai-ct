@@ -1,31 +1,50 @@
-# Dockerfile для MedGemma с GPU поддержкой
-FROM nvidia/cuda:12.0.1-base-ubuntu22.04
+# DICOM Analyzer Dockerfile
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
 
-# Устанавливаем Python и зависимости
+# Установка системных зависимостей
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    git \
+    python3-dev \
+    build-essential \
     wget \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Python пакеты
-RUN pip3 install --upgrade pip
-RUN pip3 install torch>=2.6.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-RUN pip3 install transformers>=4.50.0 accelerate bitsandbytes
-RUN pip3 install pillow requests
-
-# Создаем рабочую директорию
+# Создание рабочей директории
 WORKDIR /app
 
-# Копируем только скрипты (модели монтируем отдельно)
-COPY *.py /app/
+# Копирование requirements
+COPY requirements_dicom_analyzer.txt .
 
-# Устанавливаем переменные окружения
+# Установка Python зависимостей
+RUN pip3 install --no-cache-dir -r requirements_dicom_analyzer.txt
+
+# Копирование скрипта анализатора
+COPY dicom_analyzer.py .
+
+# Создание директории для данных
+RUN mkdir -p /data
+
+# Создание пользователя для безопасности
+RUN groupadd -r dicom && useradd -r -g dicom dicom
+RUN chown -R dicom:dicom /app /data
+
+# Переключение на пользователя dicom
+USER dicom
+
+# Установка переменных окружения
+ENV PYTHONPATH=/app
 ENV CUDA_VISIBLE_DEVICES=0
-ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
-ENV CUDA_LAUNCH_BLOCKING=1
+ENV TRANSFORMERS_CACHE=/app/.cache/transformers
+ENV HF_HOME=/app/.cache/huggingface
 
-# Команда по умолчанию
-CMD ["python3", "medgemma_optimized.py"]
+# Создание кэш-директорий
+RUN mkdir -p /app/.cache/transformers /app/.cache/huggingface
+
+# Точка входа
+ENTRYPOINT ["python3", "dicom_analyzer.py"]
+
+# По умолчанию анализируем папку /data
+CMD ["/data"]
