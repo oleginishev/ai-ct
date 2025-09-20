@@ -257,19 +257,19 @@ class TelegramNotifier:
         tags = status_tags.get(status, "#AI_CT #DICOM")
         
         if status == "start":
-            message = f"{icon} *DICOM Analysis Started*\n⏰ {timestamp}\n{details}\n\n{tags}"
+            message = f"{icon} DICOM Analysis Started\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "analysis_start":
-            message = f"{icon} *Analysis Phase Started*\n⏰ {timestamp}\n{details}\n\n{tags}"
+            message = f"{icon} Analysis Phase Started\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "analysis_complete":
-            message = f"{icon} *Analysis Phase Completed*\n⏰ {timestamp}\n{details}\n\n{tags}"
+            message = f"{icon} Analysis Phase Completed\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "report":
-            message = f"{icon} *Final Report*\n⏰ {timestamp}\n\n{details}\n\n{tags}"
+            message = f"{icon} Final Report\n⏰ {timestamp}\n\n{details}\n\n{tags}"
         elif status == "error":
-            message = f"{icon} *Error Occurred*\n⏰ {timestamp}\n{details}\n\n{tags}"
+            message = f"{icon} Error Occurred\n⏰ {timestamp}\n{details}\n\n{tags}"
         else:
-            message = f"{icon} *Status Update*\n⏰ {timestamp}\n{details}\n\n{tags}"
+            message = f"{icon} Status Update\n⏰ {timestamp}\n{details}\n\n{tags}"
             
-        return self.send_message(message)
+        return self.send_message(message, parse_mode=None)
 
 class DICOMAnalyzer:
     """Класс для анализа DICOM файлов с помощью MedGemma"""
@@ -1350,11 +1350,11 @@ def analyze_file_list(file_list, analyzer):
                 
                 # Отправка отчета в Telegram (на английском)
                 print("🔥 ОТПРАВЛЯЮ ОТЧЕТ В TELEGRAM...")
-                report_text = f"**DICOM Analysis Report**\n\n"
-                report_text += f"📋 **Files Processed:** {len(results)}\n"
-                report_text += f"🔧 **Device:** {analyzer.device.upper()}\n"
-                report_text += f"🪟 **Window Settings:** WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
-                report_text += f"**ANALYSIS RESULTS:**\n\n"
+                report_text = f"DICOM Analysis Report\n\n"
+                report_text += f"📋 Files Processed: {len(results)}\n"
+                report_text += f"🔧 Device: {analyzer.device.upper()}\n"
+                report_text += f"🪟 Window Settings: WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
+                report_text += f"ANALYSIS RESULTS:\n\n"
                 report_text += combined_report['analysis']
                 
                 result = analyzer.telegram.send_status("report", report_text)
