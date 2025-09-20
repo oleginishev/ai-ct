@@ -218,7 +218,14 @@ class TelegramNotifier:
                 'parse_mode': parse_mode
             }
             
+            print(f"🔥 DEBUG: Отправляю POST на {url}")
+            print(f"🔥 DEBUG: Chat ID: {self.chat_id}")
+            print(f"🔥 DEBUG: Сообщение длиной: {len(message)} символов")
+            
             response = requests.post(url, data=data, timeout=10)
+            print(f"🔥 DEBUG: HTTP Status: {response.status_code}")
+            print(f"🔥 DEBUG: Response: {response.text}")
+            
             return response.status_code == 200
             
         except Exception as e:
