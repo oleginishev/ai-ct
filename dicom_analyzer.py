@@ -121,13 +121,11 @@ IMAGE_PROCESSING = {
     "fallback_normalization": True # Использовать min-max если не CT
 }
 
-# Настройки производительности и батчей
+# Настройки производительности (для совместимости, но реальной батчевой обработки нет)
 PERFORMANCE_SETTINGS = {
-    "batch_size_cuda": 8,          # Размер батча для CUDA GPU (RTX A5000: 24GB)
-    "batch_size_cpu": 1,           # Размер батча для CPU
-    "auto_batch_size": True,       # Автоматически определять размер батча
-    "max_batch_size": 16,          # Максимальный размер батча
-    "memory_safety_margin": 0.8    # Коэффициент безопасности памяти (80%)
+    "progress_update_interval": 5,  # Показывать прогресс каждые N изображений
+    "large_dataset_threshold": 50,  # Порог для "большого" датасета
+    "memory_safety_margin": 0.8     # Коэффициент безопасности памяти (80%)
 }
 
 class DICOMAnalyzer:
@@ -143,13 +141,16 @@ class DICOMAnalyzer:
         self.window_width = window_width
         print(f"Параметры CT окна: WL={self.window_level}, WW={self.window_width}")
         
-        # Настройка размера батча
+        # Настройка обновления прогресса (batch_size теперь используется только для совместимости)
         if batch_size is not None:
-            self.batch_size = batch_size
-            print(f"🔧 Пользовательский размер батча: {self.batch_size}")
+            self.progress_interval = batch_size  # Используем как интервал показа прогресса
+            print(f"🔧 Интервал показа прогресса: каждые {self.progress_interval} изображений")
         else:
-            self.batch_size = PERFORMANCE_SETTINGS["batch_size_cuda"] if self.device == "cuda" else PERFORMANCE_SETTINGS["batch_size_cpu"]
-            print(f"⚙️  Автоматический размер батча: {self.batch_size}")
+            self.progress_interval = PERFORMANCE_SETTINGS["progress_update_interval"]
+            print(f"⚙️  Автоматический интервал прогресса: каждые {self.progress_interval} изображений")
+        
+        # Для совместимости с существующим кодом
+        self.batch_size = self.progress_interval
         
         # Выбор модели
         if model_name not in AVAILABLE_MODELS:
@@ -642,24 +643,27 @@ class DICOMAnalyzer:
         
         print(f"Успешно загружено {len(images)} изображений")
         
-        # Анализ всех изображений батчами для эффективности GPU
+        # Анализ всех изображений поштучно (MedGemma не поддерживает настоящую батчевую обработку)
         print("Анализируем все изображения...")
         all_analyses = []
         
-        # Разбиваем на батчи для эффективной обработки на GPU
-        batch_size = self.batch_size
-        total_batches = (len(images) + batch_size - 1) // batch_size
-        print(f"📊 Всего батчей: {total_batches} (по {batch_size} изображений в батче)")
+        print(f"📊 Обрабатываем {len(images)} изображений поштучно...")
+        print(f"🔧 Устройство: {self.device.upper()}")
         
-        for batch_idx in tqdm(range(total_batches), desc="Анализ батчей", unit="батч"):
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, len(images))
-            batch_images = images[start_idx:end_idx]
-            batch_files = valid_files[start_idx:end_idx]
-            
-            # Анализируем батч
-            batch_analyses = self.analyze_batch(batch_images, batch_files)
-            all_analyses.extend(batch_analyses)
+        # Обрабатываем каждое изображение с прогресс-баром
+        for i, (image, file_path) in enumerate(tqdm(zip(images, valid_files), desc="Анализ изображений", unit="изображение", total=len(images))):
+            try:
+                # Анализируем одно изображение
+                result = self.analyze_image(image, file_path)
+                all_analyses.append(result)
+                
+                # Показываем промежуточную статистику
+                if (i + 1) % self.progress_interval == 0:
+                    print(f"📈 Обработано {i + 1}/{len(images)} изображений...")
+                    
+            except Exception as e:
+                print(f"⚠️  Ошибка при анализе {os.path.basename(file_path)}: {e}")
+                continue
         
         # Создаем общий анализ на основе всех индивидуальных анализов
         combined_result = self.create_combined_analysis(all_analyses, valid_files)
@@ -885,18 +889,26 @@ def analyze_file_list(file_list, analyzer):
         return
     
     print(f"✅ Загружено {len(images_and_paths)} файлов")
-    print("🤖 Запуск батчевого анализа с MedGemma...")
-    print(f"📦 Размер батча: {analyzer.batch_size}")
+    print("🤖 Запуск анализа с MedGemma...")
     print(f"🔧 Устройство: {analyzer.device.upper()}")
     
-    # Вычисляем количество батчей
-    total_batches = (len(images_and_paths) + analyzer.batch_size - 1) // analyzer.batch_size
-    print(f"📊 Всего батчей для обработки: {total_batches}")
-    
-    # Батчевый анализ
+    # Поштучный анализ (MedGemma не поддерживает настоящую батчевую обработку)
     try:
-        results = analyzer.analyze_batch([img for img, _ in images_and_paths], 
-                                       [path for _, path in images_and_paths])
+        results = []
+        print(f"📊 Обрабатываем {len(images_and_paths)} изображений...")
+        
+        for i, (image, file_path) in enumerate(tqdm(images_and_paths, desc="Анализ изображений", unit="изображение")):
+            try:
+                result = analyzer.analyze_image(image, file_path)
+                results.append(result)
+                
+                # Показываем промежуточную статистику
+                if (i + 1) % analyzer.progress_interval == 0:
+                    print(f"📈 Обработано {i + 1}/{len(images_and_paths)} изображений...")
+                    
+            except Exception as e:
+                print(f"⚠️  Ошибка при анализе {os.path.basename(file_path)}: {e}")
+                continue
         
         # Создаем общий отчет
         if results:
@@ -912,12 +924,12 @@ def analyze_file_list(file_list, analyzer):
             print("❌ Не удалось проанализировать файлы")
             
     except Exception as e:
-        print(f"❌ Ошибка при батчевом анализе: {e}")
-        print("🔄 Переключаемся на поштучный анализ...")
+        print(f"❌ Ошибка при анализе: {e}")
+        print("🔄 Пробуем альтернативный метод анализа...")
         
         # Fallback - поштучный анализ без лишнего вывода
         results = []
-        for image, file_path in tqdm(images_and_paths, desc="Анализ файлов"):
+        for image, file_path in tqdm(images_and_paths, desc="Анализ файлов (fallback)"):
             try:
                 result = analyzer.analyze_image(image, file_path)
                 results.append(result)
