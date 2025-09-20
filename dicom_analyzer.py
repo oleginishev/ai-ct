@@ -58,6 +58,7 @@ DICOM_FOLDER_PATH = "data"  # По умолчанию папка data
 DEBUG_MODE = False  # Установите True для debug режима
 DEBUG_LIMIT = 50    # Количество файлов для анализа в debug режиме
 
+
 # Доступные модели MedGemma
 AVAILABLE_MODELS = {
     "4b": "google/medgemma-4b-it",
@@ -746,7 +747,7 @@ class DICOMAnalyzer:
             
             print(f"🔄 Батч {batch_num}/{total_batches}: {current_batch_size} изображений")
             
-            # Подготавливаем все сообщения для батча
+            # Подготавливаем все сообщения для батча  
             batch_messages = []
             for image in batch_images:
                 messages = [
@@ -882,11 +883,24 @@ class DICOMAnalyzer:
         valid_files = []
         
         print("Загружаем изображения...")
+        
+        # Загружаем первый файл с подробным выводом для показа параметров
+        first_file_processed = False
+        
         for dicom_file in tqdm(dicom_files, desc="Загрузка DICOM файлов", unit="файл"):
-            image = self.load_dicom_as_image(dicom_file)
+            # Первый файл - показываем все параметры, остальные - тихо
+            silent = first_file_processed
+            
+            image = self.load_dicom_as_image(dicom_file, silent=silent)
             if image is not None:
                 images.append(image)
                 valid_files.append(dicom_file)
+                
+                # После первого успешно загруженного файла все остальные загружаем тихо
+                if not first_file_processed:
+                    first_file_processed = True
+                    if len(dicom_files) > 1:
+                        print(f"📋 Параметры обработки установлены. Загружаем остальные {len(dicom_files)-1} файлов...")
         
         if not images:
             print("Не удалось загрузить ни одного изображения!")
@@ -929,8 +943,8 @@ class DICOMAnalyzer:
         
         print(f"\nАнализируем файл: {file_path}")
         
-        # Загрузка изображения
-        image = self.load_dicom_as_image(file_path)
+        # Загрузка изображения (показываем все параметры для одиночного файла)
+        image = self.load_dicom_as_image(file_path, silent=False)
         if image is None:
             return
         
@@ -1013,7 +1027,7 @@ def show_help():
     --pneumonia-window=ТИП Специальные окна: lung_soft, infection, standard_lung
 
 ОПЦИИ ОБРАБОТКИ:
-    --batch-size=ЧИСЛО     Размер батча для GPU (по умолчанию: 8)
+    --batch-size=ЧИСЛО     Размер батча для GPU (по умолчанию: 4)
     --debug                Анализировать каждый 5-й файл (для тестирования)
 
 ПРИМЕРЫ:
@@ -1083,8 +1097,8 @@ def analyze_single_file(file_path, analyzer):
         return
     
     try:
-        # Загружаем и обрабатываем DICOM файл
-        image = analyzer.load_dicom_as_image(file_path)
+        # Загружаем и обрабатываем DICOM файл (показываем параметры для одиночного файла)
+        image = analyzer.load_dicom_as_image(file_path, silent=False)
         if image is None:
             print(f"❌ Не удалось загрузить DICOM файл: {file_path}")
             return
