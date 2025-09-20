@@ -34,6 +34,11 @@ warnings.filterwarnings('ignore')
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Избегаем предупреждений о параллелизме токенизатора
 
+# Импорт для Telegram интеграции
+import requests
+import json
+from datetime import datetime
+
 # Добавляем импорт datasets для эффективной батчевой обработки
 try:
     from datasets import Dataset
@@ -50,6 +55,12 @@ DICOM_FOLDER_PATH = "data"  # По умолчанию папка data
 # Debug режим - анализировать только первые N изображений
 DEBUG_MODE = False  # Установите True для debug режима
 DEBUG_LIMIT = 50    # Количество файлов для анализа в debug режиме
+
+# ===== НАСТРОЙКИ TELEGRAM =====
+# Настройки Telegram бота (будут установлены через аргументы командной строки)
+TELEGRAM_BOT_TOKEN = None
+TELEGRAM_CHAT_ID = None
+TELEGRAM_ENABLED = False
 
 
 # Доступные модели MedGemma
@@ -163,13 +174,96 @@ PERFORMANCE_SETTINGS = {
     "memory_safety_margin": 0.8     # Коэффициент безопасности памяти (80%)
 }
 
+class TelegramNotifier:
+    """Класс для отправки уведомлений в Telegram"""
+    
+    def __init__(self, bot_token, chat_id):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.enabled = bot_token is not None and chat_id is not None
+        
+        if self.enabled:
+            print(f"📱 Telegram уведомления включены (Chat ID: {chat_id})")
+        
+    def send_message(self, message, parse_mode='Markdown'):
+        """Отправка сообщения в Telegram"""
+        if not self.enabled:
+            return False
+            
+        try:
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            
+            # Разбиваем длинные сообщения на части (Telegram лимит ~4096 символов)
+            max_length = 4000
+            if len(message) > max_length:
+                parts = [message[i:i+max_length] for i in range(0, len(message), max_length)]
+                for i, part in enumerate(parts):
+                    if i > 0:
+                        part = f"...(продолжение {i+1}/{len(parts)})\n\n" + part
+                    self._send_single_message(part, parse_mode)
+            else:
+                return self._send_single_message(message, parse_mode)
+                
+        except Exception as e:
+            print(f"❌ Ошибка отправки в Telegram: {e}")
+            return False
+    
+    def _send_single_message(self, message, parse_mode):
+        """Отправка одного сообщения"""
+        try:
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            data = {
+                'chat_id': self.chat_id,
+                'text': message,
+                'parse_mode': parse_mode
+            }
+            
+            response = requests.post(url, data=data, timeout=10)
+            return response.status_code == 200
+            
+        except Exception as e:
+            print(f"❌ Ошибка отправки сообщения: {e}")
+            return False
+    
+    def send_status(self, status, details=""):
+        """Отправка статусного сообщения"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        status_icons = {
+            "start": "🚀",
+            "analysis_start": "🔬", 
+            "analysis_complete": "✅",
+            "report": "📊",
+            "error": "❌"
+        }
+        
+        icon = status_icons.get(status, "ℹ️")
+        
+        if status == "start":
+            message = f"{icon} *DICOM Analysis Started*\n⏰ {timestamp}\n{details}"
+        elif status == "analysis_start":
+            message = f"{icon} *Analysis Phase Started*\n⏰ {timestamp}\n{details}"
+        elif status == "analysis_complete":
+            message = f"{icon} *Analysis Phase Completed*\n⏰ {timestamp}\n{details}"
+        elif status == "report":
+            message = f"{icon} *Final Report*\n⏰ {timestamp}\n\n{details}"
+        elif status == "error":
+            message = f"{icon} *Error Occurred*\n⏰ {timestamp}\n{details}"
+        else:
+            message = f"{icon} *Status Update*\n⏰ {timestamp}\n{details}"
+            
+        return self.send_message(message)
+
 class DICOMAnalyzer:
     """Класс для анализа DICOM файлов с помощью MedGemma"""
     
-    def __init__(self, model_name="4b", window_level=DEFAULT_WINDOW_LEVEL, window_width=DEFAULT_WINDOW_WIDTH, batch_size=None):
+    def __init__(self, model_name="4b", window_level=DEFAULT_WINDOW_LEVEL, window_width=DEFAULT_WINDOW_WIDTH, batch_size=None, telegram_notifier=None):
         """Инициализация анализатора"""
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Используется устройство: {self.device}")
+        
+        # Telegram уведомления
+        self.telegram = telegram_notifier
         
         # Сохраняем параметры windowing
         self.window_level = window_level
@@ -855,9 +949,15 @@ class DICOMAnalyzer:
         """
         if not os.path.exists(directory_path):
             print(f"Директория {directory_path} не найдена!")
+            if self.telegram:
+                self.telegram.send_status("error", f"Directory not found: {directory_path}")
             return
         
         print(f"\nАнализируем DICOM файлы в: {directory_path}")
+        
+        # Уведомление о начале анализа
+        if self.telegram:
+            self.telegram.send_status("analysis_start", f"📁 Directory: `{directory_path}`\n🔧 Device: {self.device.upper()}\n🪟 Window: WL={self.window_level}, WW={self.window_width}")
         
         # Поиск всех DICOM файлов
         dicom_files = []
@@ -936,8 +1036,25 @@ class DICOMAnalyzer:
             file_paths = [result['file_path'] for result in all_analyses]
             combined_result = self.create_combined_analysis(analyses, file_paths)
             self.results.append(combined_result)
+            
+            # Уведомление о завершении анализа
+            if self.telegram:
+                self.telegram.send_status("analysis_complete", f"📊 Processed: {len(all_analyses)} images\n⏱️ Analysis completed successfully")
+                
+                # Отправка отчета в Telegram (на английском)
+                report_text = f"**DICOM Analysis Report**\n\n"
+                report_text += f"📁 **Directory:** `{directory_path}`\n"
+                report_text += f"📊 **Files Processed:** {len(all_analyses)}\n"
+                report_text += f"🔧 **Device:** {self.device.upper()}\n"
+                report_text += f"🪟 **Window Settings:** WL={self.window_level}, WW={self.window_width}\n\n"
+                report_text += f"**ANALYSIS RESULTS:**\n\n"
+                report_text += combined_result['analysis']
+                
+                self.telegram.send_status("report", report_text)
         else:
             print("❌ Нет результатов анализа для создания общего отчета")
+            if self.telegram:
+                self.telegram.send_status("error", "No analysis results to create report")
     
     def analyze_single_file(self, file_path):
         """
@@ -1039,6 +1156,10 @@ def show_help():
     --batch-size=ЧИСЛО     Размер батча для GPU (по умолчанию: 4)
     --debug                Анализировать каждый 5-й файл (для тестирования)
 
+ОПЦИИ TELEGRAM:
+    --telegram-token=ТОКЕН Токен Telegram бота
+    --telegram-chat=ID     Chat ID для отправки уведомлений
+
 ПРИМЕРЫ:
     # Анализ папки с файлами
     python dicom_analyzer.py /data/dicom_files/
@@ -1062,6 +1183,9 @@ def show_help():
     
     # Специальное окно для инфекций
     python dicom_analyzer.py --pneumonia-window=infection '/data/pneumonia/IMG-*.dcm'
+    
+    # Анализ с уведомлениями в Telegram
+    python dicom_analyzer.py --telegram-token=YOUR_BOT_TOKEN --telegram-chat=YOUR_CHAT_ID '/data/scans/'
 
 DOCKER ПРИМЕРЫ:
     # Анализ папки через Docker
@@ -1239,6 +1363,8 @@ def main():
     batch_size = None
     custom_prompt = None
     language = "en"
+    telegram_token = None
+    telegram_chat_id = None
     
     # Обработка аргументов командной строки
     args_to_remove = []
@@ -1298,6 +1424,20 @@ def main():
         elif arg == "--lang" and i + 1 < len(sys.argv):
             language = sys.argv[i + 1].lower()
             args_to_remove.extend([arg, sys.argv[i + 1]])
+        elif arg.startswith("--telegram-token="):
+            # Токен Telegram бота
+            telegram_token = arg.split("=", 1)[1]
+            args_to_remove.append(arg)
+        elif arg == "--telegram-token" and i + 1 < len(sys.argv):
+            telegram_token = sys.argv[i + 1]
+            args_to_remove.extend([arg, sys.argv[i + 1]])
+        elif arg.startswith("--telegram-chat="):
+            # Chat ID для Telegram
+            telegram_chat_id = arg.split("=", 1)[1]
+            args_to_remove.append(arg)
+        elif arg == "--telegram-chat" and i + 1 < len(sys.argv):
+            telegram_chat_id = sys.argv[i + 1]
+            args_to_remove.extend([arg, sys.argv[i + 1]])
     
     # Удаляем обработанные аргументы
     for arg in args_to_remove:
@@ -1309,8 +1449,18 @@ def main():
     if batch_size:
         print(f"📦 Пользовательский размер батча: {batch_size}")
     
+    # Создание Telegram notifier
+    telegram_notifier = None
+    if telegram_token and telegram_chat_id:
+        telegram_notifier = TelegramNotifier(telegram_token, telegram_chat_id)
+        # Отправляем уведомление о запуске
+        start_details = f"🤖 Model: MedGemma-{model_name.upper()}\n🔧 Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}\n🪟 Window: WL={window_level}, WW={window_width}"
+        telegram_notifier.send_status("start", start_details)
+    elif telegram_token or telegram_chat_id:
+        print("⚠️  Для Telegram уведомлений нужны оба параметра: --telegram-token и --telegram-chat")
+    
     # Создание анализатора
-    analyzer = DICOMAnalyzer(model_name=model_name, window_level=window_level, window_width=window_width, batch_size=batch_size)
+    analyzer = DICOMAnalyzer(model_name=model_name, window_level=window_level, window_width=window_width, batch_size=batch_size, telegram_notifier=telegram_notifier)
     
     # Применение языковых настроек
     global DEFAULT_ANALYSIS_PROMPT, CURRENT_LANGUAGE
