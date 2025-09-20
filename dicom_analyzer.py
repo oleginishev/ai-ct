@@ -194,15 +194,12 @@ class TelegramNotifier:
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
             
             # Разбиваем длинные сообщения на части (Telegram лимит ~4096 символов)
-            max_length = 4000
+            max_length = 3000  # Уменьшили лимит для безопасности
             if len(message) > max_length:
-                parts = [message[i:i+max_length] for i in range(0, len(message), max_length)]
-                for i, part in enumerate(parts):
-                    if i > 0:
-                        part = f"...(продолжение {i+1}/{len(parts)})\n\n" + part
-                    self._send_single_message(part, parse_mode)
-            else:
-                return self._send_single_message(message, parse_mode)
+                print(f"⚠️  Сообщение слишком длинное ({len(message)} символов), обрезаем до {max_length}")
+                message = message[:max_length] + "\n\n[MESSAGE TRUNCATED]"
+                
+            return self._send_single_message(message, parse_mode)
                 
         except Exception as e:
             print(f"❌ Ошибка отправки в Telegram: {e}")
@@ -226,6 +223,11 @@ class TelegramNotifier:
             print(f"🔥 DEBUG: HTTP Status: {response.status_code}")
             print(f"🔥 DEBUG: Response: {response.text}")
             
+            # Обработка rate limit
+            if response.status_code == 429:
+                print("⚠️  Rate limit достигнут - пропускаем отправку")
+                return False
+                
             return response.status_code == 200
             
         except Exception as e:
@@ -972,9 +974,7 @@ class DICOMAnalyzer:
         
         print(f"\nАнализируем DICOM файлы в: {directory_path}")
         
-        # Уведомление о начале анализа
-        if self.telegram:
-            self.telegram.send_status("analysis_start", f"📁 Directory: `{directory_path}`\n🔧 Device: {self.device.upper()}\n🪟 Window: WL={self.window_level}, WW={self.window_width}")
+        # Уведомление о начале уже отправлено в main(), не дублируем
         
         # Поиск всех DICOM файлов
         dicom_files = []
@@ -1275,14 +1275,7 @@ def analyze_file_list(file_list, analyzer):
     
     print(f"\n📋 Анализируем {len(file_list)} файлов батчами...")
     
-    # Отправляем уведомление о начале анализа
-    print(f"🔥 DEBUG: analyzer.telegram={'ДА' if analyzer.telegram else 'НЕТ'}")
-    if analyzer.telegram:
-        print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О НАЧАЛЕ АНАЛИЗА В TELEGRAM...")
-        result = analyzer.telegram.send_status("analysis_start", f"📋 Files to process: {len(file_list)}\n🔧 Device: {analyzer.device.upper()}\n🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}")
-        print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ НАЧАЛА: {result}")
-    else:
-        print("🔥 DEBUG: analyzer.telegram НЕТ - уведомления не отправляются!")
+    # Уведомление о начале уже отправлено в main(), не дублируем
     
     # Если один файл - используем analyze_single_file
     if len(file_list) == 1:
@@ -1342,27 +1335,36 @@ def analyze_file_list(file_list, analyzer):
             file_paths = [result['file_path'] for result in results]
             combined_report = analyzer.create_combined_analysis(analyses, file_paths)
             
+            # Создаем краткий отчет (400-600 символов) для всех выводов
+            full_analysis = combined_report['analysis']
+            if len(full_analysis) > 600:
+                # Берем только первые 550 символов + заключение
+                brief_analysis = full_analysis[:550] + "...\n\n[ANALYSIS TRUNCATED]"
+            else:
+                brief_analysis = full_analysis
+            
             # Уведомление о завершении анализа
             if analyzer.telegram:
                 print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ В TELEGRAM...")
                 result = analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files\n⏱️ Analysis completed successfully")
                 print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ ЗАВЕРШЕНИЯ: {result}")
                 
-                # Отправка отчета в Telegram (на английском)
-                print("🔥 ОТПРАВЛЯЮ ОТЧЕТ В TELEGRAM...")
-                report_text = f"DICOM Analysis Report\n\n"
-                report_text += f"📋 Files Processed: {len(results)}\n"
+                # Отправка отчета в Telegram (тот же краткий отчет)
+                print("🔥 ОТПРАВЛЯЮ КРАТКИЙ ОТЧЕТ В TELEGRAM...")
+                
+                report_text = f"📊 DICOM Analysis Report\n\n"
+                report_text += f"📋 Files: {len(results)}\n"
                 report_text += f"🔧 Device: {analyzer.device.upper()}\n"
-                report_text += f"🪟 Window Settings: WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
-                report_text += f"ANALYSIS RESULTS:\n\n"
-                report_text += combined_report['analysis']
+                report_text += f"🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
+                report_text += f"RESULTS:\n{brief_analysis}"
                 
                 result = analyzer.telegram.send_status("report", report_text)
                 print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ ОТЧЕТА: {result}")
             
-            print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
+            # Показываем тот же краткий отчет в консоли
+            print(f"\n📊 КРАТКИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
-            print(combined_report['analysis'])
+            print(brief_analysis)
             print("="*80)
         else:
             print("❌ Не удалось проанализировать файлы")
@@ -1392,23 +1394,30 @@ def analyze_file_list(file_list, analyzer):
             file_paths = [result['file_path'] for result in results]
             combined_report = analyzer.create_combined_analysis(analyses, file_paths)
             
+            # Создаем краткий отчет (400-600 символов) для всех выводов
+            full_analysis = combined_report['analysis']
+            if len(full_analysis) > 600:
+                brief_analysis = full_analysis[:550] + "...\n\n[ANALYSIS TRUNCATED]"
+            else:
+                brief_analysis = full_analysis
+            
             # Уведомление о завершении анализа (fallback)
             if analyzer.telegram:
                 analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files (fallback mode)\n⏱️ Analysis completed successfully")
                 
-                # Отправка отчета в Telegram (на английском)
-                report_text = f"**DICOM Analysis Report (Fallback)**\n\n"
-                report_text += f"📋 **Files Processed:** {len(results)}\n"
-                report_text += f"🔧 **Device:** {analyzer.device.upper()}\n"
-                report_text += f"🪟 **Window Settings:** WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
-                report_text += f"**ANALYSIS RESULTS:**\n\n"
-                report_text += combined_report['analysis']
+                # Отправка отчета в Telegram (тот же краткий отчет)
+                report_text = f"📊 DICOM Analysis Report (Fallback)\n\n"
+                report_text += f"📋 Files: {len(results)}\n"
+                report_text += f"🔧 Device: {analyzer.device.upper()}\n"
+                report_text += f"🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
+                report_text += f"RESULTS:\n{brief_analysis}"
                 
                 analyzer.telegram.send_status("report", report_text)
             
-            print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
+            # Показываем тот же краткий отчет в консоли
+            print(f"\n📊 КРАТКИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ (FALLBACK):")
             print("="*80)
-            print(combined_report['analysis'])
+            print(brief_analysis)
             print("="*80)
         else:
             print("❌ Не удалось проанализировать файлы (fallback)")
