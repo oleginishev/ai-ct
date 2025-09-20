@@ -55,22 +55,54 @@ PNEUMONIA_DETECTION_WINDOWS = {
     "standard_lung": {"wl": -600, "ww": 1600}   # Стандартное легочное
 }
 
+# Языковые настройки для промптов
+LANGUAGE_PROMPTS = {
+    "en": """You are an expert radiologist and pulmonologist with extensive experience in chest CT analysis. 
+
+Analyze this medical image and provide a detailed assessment focusing on:
+1. Lung pathology: pneumonia, consolidations, ground-glass opacities
+2. Pleural changes: effusions, thickening
+3. Airways: air bronchograms, bronchial wall thickening  
+4. Overall lung architecture and any abnormalities
+5. Clinical recommendations
+
+Be thorough but concise. Report both normal and abnormal findings. If any concerning features are present, describe their location and characteristics in detail.""",
+    
+    "ru": """Вы - эксперт-рентгенолог и пульмонолог с обширным опытом анализа КТ грудной клетки.
+
+Проанализируйте это медицинское изображение и предоставьте детальную оценку, сосредоточившись на:
+1. Патологии легких: пневмония, консолидации, изменения по типу "матового стекла"
+2. Плевральные изменения: выпот, утолщение
+3. Дыхательные пути: воздушные бронхограммы, утолщение стенок бронхов
+4. Общая архитектура легких и любые аномалии
+5. Клинические рекомендации
+
+Будьте тщательными, но лаконичными. Сообщайте как о нормальных, так и о патологических находках. Если присутствуют тревожные признаки, опишите их локализацию и характеристики подробно."""
+}
+
+# Единый универсальный промпт для всех случаев анализа (по умолчанию английский)
+DEFAULT_ANALYSIS_PROMPT = LANGUAGE_PROMPTS["en"]
+CURRENT_LANGUAGE = "en"
+
 # Промпты для анализа (можно изменить для разных специализаций)
 ANALYSIS_PROMPTS = {
     # Системный промпт - определяет роль эксперта
-    "system": "You are an expert pulmonologist and chest radiologist with extensive experience in detecting pneumonia, COVID-19, and other infectious lung diseases. You are highly skilled at identifying subtle signs of consolidation, ground-glass opacities, and early inflammatory changes.",
+    "system": "You are an expert pulmonologist and chest radiologist with extensive experience in detecting pneumonia, COVID-19, and other infectious lung diseases.",
+    
+    # Единый промпт для всех типов анализа
+    "universal": DEFAULT_ANALYSIS_PROMPT,
     
     # Промпт для анализа отдельного изображения
-    "single_image": "CRITICAL: Carefully examine this chest CT scan for ANY signs of pneumonia or lung infection. Look specifically for: 1) Consolidations (areas of increased density), 2) Ground-glass opacities (hazy areas), 3) Air bronchograms, 4) Bilateral or unilateral involvement, 5) Pleural effusions, 6) Lymphadenopathy. Even subtle changes should be noted. Compare lung fields systematically - right vs left, upper vs lower lobes. If you see ANY abnormal density, opacity, or architectural distortion, describe it in detail. Do NOT dismiss subtle findings. Report both normal and abnormal findings explicitly.",
+    "single_image": DEFAULT_ANALYSIS_PROMPT,
     
     # Промпт для батчевого анализа (краткий)
-    "batch_analysis": "Examine this chest CT for pneumonia signs: consolidations, ground-glass opacities, air bronchograms, pleural changes. Look carefully at all lung segments. Report ANY abnormal densities or opacities, even if subtle. State clearly if lungs appear normal or if there are concerning findings.",
+    "batch_analysis": DEFAULT_ANALYSIS_PROMPT,
     
     # Промпт для общего отчета по серии
-    "series_report": "Based on analysis of {count} chest CT images from a DICOM series, create a comprehensive pulmonary radiological report focusing on pneumonia detection. Carefully review all individual findings for: consolidations, ground-glass changes, air bronchograms, bilateral involvement patterns typical of pneumonia. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment: are there signs of pneumonia/infection? What is the pattern and distribution? What is your clinical recommendation?",
+    "series_report": "Based on analysis of {count} chest CT images, create a comprehensive pulmonary radiological report. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment with clinical recommendations.",
     
     # Системный промпт для общего отчета
-    "series_system": "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease. You have extensive experience identifying subtle signs of lung infection that others might miss."
+    "series_system": "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease."
 }
 
 # Параметры генерации текста
@@ -120,21 +152,71 @@ class DICOMAnalyzer:
         
         # Выбор модели
         if model_name not in AVAILABLE_MODELS:
-            print(f"⚠️  Неизвестная модель '{model_name}'. Доступные: {list(AVAILABLE_MODELS.keys())}")
-            model_name = DEFAULT_MODEL
-            print(f"Используем модель по умолчанию: {model_name}")
+            print(f"❌ ОШИБКА: Неизвестная модель '{model_name}'")
+            print(f"📋 Доступные модели: {list(AVAILABLE_MODELS.keys())}")
+            print(f"💡 Используйте: --model=4b или --model=27b")
+            raise ValueError(f"Модель '{model_name}' не поддерживается. Доступны: {list(AVAILABLE_MODELS.keys())}")
         
         self.model_name = model_name
         self.model_path = AVAILABLE_MODELS[model_name]
         
+        # Проверяем, что это MedGemma модель
+        if "medgemma" not in self.model_path.lower():
+            raise ValueError(f"Поддерживаются только модели MedGemma. Получена: {self.model_path}")
+        
         # Инициализация MedGemma pipeline
         print(f"Загружаем MedGemma модель: {self.model_path}")
-        self.pipe = pipeline(
-            "image-text-to-text",
-            model=self.model_path,
-            torch_dtype=torch.bfloat16 if self.device == "cuda" else torch.float32,
-            device=self.device,
-        )
+        
+        try:
+            # Попробуем загрузить с trust_remote_code
+            self.pipe = pipeline(
+                "image-text-to-text",
+                model=self.model_path,
+                torch_dtype=torch.bfloat16 if self.device == "cuda" else torch.float32,
+                device=self.device,
+                trust_remote_code=True,
+                use_fast=False
+            )
+        except Exception as e:
+            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось загрузить модель {self.model_path}")
+            print(f"Детали ошибки: {e}")
+            print("\n🔧 ВОЗМОЖНЫЕ РЕШЕНИЯ:")
+            print("1. Проверьте токен Hugging Face: export HF_TOKEN='your_token'")
+            print("2. Запросите доступ к модели: https://huggingface.co/google/medgemma-4b-it")
+            print("3. Проверьте интернет-соединение")
+            print("4. Убедитесь, что установлены все зависимости: pip install -r requirements_dicom_analyzer.txt")
+            
+            # Пробуем альтернативный способ загрузки ТОЛЬКО для MedGemma
+            print("\n🔄 Пробуем альтернативный способ загрузки MedGemma...")
+            
+            try:
+                from transformers import AutoTokenizer, AutoModelForCausalLM
+                
+                tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_path, 
+                    trust_remote_code=True
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    self.model_path, 
+                    torch_dtype=torch.bfloat16 if self.device == "cuda" else torch.float32,
+                    device_map="auto" if self.device == "cuda" else None,
+                    trust_remote_code=True
+                )
+                
+                self.pipe = pipeline(
+                    "text-generation",
+                    model=model,
+                    tokenizer=tokenizer,
+                    device=self.device
+                )
+                print("✅ MedGemma модель загружена через альтернативный метод")
+                
+            except Exception as e2:
+                print(f"❌ ФАТАЛЬНАЯ ОШИБКА: Невозможно загрузить MedGemma модель")
+                print(f"Альтернативная ошибка: {e2}")
+                print("\n💀 АНАЛИЗ ОСТАНОВЛЕН. Исправьте проблемы с моделью и повторите запуск.")
+                print("📚 Документация: https://huggingface.co/google/medgemma-4b-it")
+                raise RuntimeError(f"Не удалось загрузить модель {self.model_path}. Проверьте токен доступа и права.")
         print(f"MedGemma {model_name.upper()} модель загружена успешно!")
         print("Примечание: Предупреждение о 'pipelines sequentially on GPU' - это нормально, мы используем батчи для оптимизации.")
         
@@ -167,12 +249,13 @@ class DICOMAnalyzer:
         
         return windowed
     
-    def load_dicom_as_image(self, dicom_path):
+    def load_dicom_as_image(self, dicom_path, silent=False):
         """
         Загрузка DICOM файла и конвертация в PIL Image с правильным CT windowing
         
         Args:
             dicom_path (str): Путь к DICOM файлу
+            silent (bool): Не выводить информацию о параметрах (для батчевой обработки)
             
         Returns:
             PIL.Image: Изображение или None при ошибке
@@ -187,7 +270,8 @@ class DICOMAnalyzer:
                 slope = float(dicom.RescaleSlope)
                 intercept = float(dicom.RescaleIntercept)
                 image_array = image_array * slope + intercept
-                print(f"Применены DICOM параметры: Slope={slope}, Intercept={intercept}")
+                if not silent:
+                    print(f"Применены DICOM параметры: Slope={slope}, Intercept={intercept}")
             
             # Определение типа исследования для выбора окна
             modality = getattr(dicom, 'Modality', 'CT')
@@ -197,7 +281,8 @@ class DICOMAnalyzer:
             if modality == 'CT':
                 # Используем параметры, переданные при инициализации анализатора
                 window_center, window_width = self.window_level, self.window_width
-                print(f"Применено CT окно: WL={window_center}, WW={window_width}")
+                if not silent:
+                    print(f"Применено CT окно: WL={window_center}, WW={window_width}")
                 
                 # Дополнительная логика для специфических частей тела (опционально)
                 if 'BRAIN' in body_part or 'HEAD' in body_part:
@@ -214,8 +299,10 @@ class DICOMAnalyzer:
                 # Информация о применяемом окне
                 min_hu = window_center - window_width // 2
                 max_hu = window_center + window_width // 2
-                print(f"Диапазон HU: {min_hu} до {max_hu} (оптимизировано для анализа легких)")
-                print(f"Анатомическая область: {body_part or 'CHEST/LUNG (по умолчанию)'}")
+                if not silent:
+                    print(f"Диапазон HU: {min_hu} до {max_hu} (оптимизировано для анализа легких)")
+                if not silent:
+                    print(f"Анатомическая область: {body_part or 'CHEST/LUNG (по умолчанию)'}")
             else:
                 # Для других модальностей (X-ray и т.д.) используем простую нормализацию
                 if image_array.max() > image_array.min():
@@ -223,7 +310,8 @@ class DICOMAnalyzer:
                     image_array = (image_array * 255).astype(np.uint8)
                 else:
                     image_array = np.zeros_like(image_array, dtype=np.uint8)
-                print(f"Применена min-max нормализация для модальности: {modality}")
+                if not silent:
+                    print(f"Применена min-max нормализация для модальности: {modality}")
                 
                 # Конвертация в PIL Image
                 image = Image.fromarray(image_array, mode='L')
@@ -259,24 +347,36 @@ class DICOMAnalyzer:
             dict: Результаты анализа
         """
         try:
-            # Создание сообщения для MedGemma
-            messages = [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": ANALYSIS_PROMPTS["system"]}]
-                },
-                {
-                    "role": "user", 
-                    "content": [
-                        {"type": "text", "text": ANALYSIS_PROMPTS["single_image"]},
-                        {"type": "image", "image": image}
-                    ]
-                }
-            ]
-            
-            # Получение ответа от MedGemma
-            output = self.pipe(text=messages, max_new_tokens=GENERATION_PARAMS["single_image_tokens"])
-            analysis_text = output[0]["generated_text"][-1]["content"]
+            # Адаптивный анализ в зависимости от типа модели
+            if "medgemma" in self.model_path.lower():
+                # Создание сообщения для MedGemma
+                messages = [
+                    {
+                        "role": "system",
+                        "content": [{"type": "text", "text": ANALYSIS_PROMPTS["system"]}]
+                    },
+                    {
+                        "role": "user", 
+                        "content": [
+                            {"type": "text", "text": ANALYSIS_PROMPTS["single_image"]},
+                            {"type": "image", "image": image}
+                        ]
+                    }
+                ]
+                
+                # Получение ответа от MedGemma
+                try:
+                    output = self.pipe(text=messages, max_new_tokens=GENERATION_PARAMS["single_image_tokens"])
+                    analysis_text = output[0]["generated_text"][-1]["content"]
+                except Exception as e:
+                    print(f"Ошибка обработки MedGemma: {e}")
+                    # Fallback для MedGemma
+                    prompt = f"{ANALYSIS_PROMPTS['system']} {ANALYSIS_PROMPTS['single_image']}"
+                    output = self.pipe(prompt, max_new_tokens=GENERATION_PARAMS["single_image_tokens"])
+                    analysis_text = output[0]["generated_text"]
+            else:
+                # Ошибка: должна быть только MedGemma модель
+                raise ValueError(f"Неподдерживаемая модель: {self.model_path}. Поддерживаются только модели MedGemma.")
             
             return {
                 'file_path': file_path,
@@ -592,10 +692,201 @@ class DICOMAnalyzer:
         
         print("\n" + "="*100)
 
+def show_help():
+    """Показать справку по использованию"""
+    help_text = """
+🔬 DICOM АНАЛИЗАТОР С MEDGEMMA - СПРАВКА
+
+ИСПОЛЬЗОВАНИЕ:
+    python dicom_analyzer.py [ОПЦИИ] <ПУТЬ_К_ПАПКЕ_ИЛИ_ФАЙЛУ>
+
+ОСНОВНЫЕ КОМАНДЫ:
+    /путь/к/папке/         Анализ всех DICOM файлов в папке
+    /путь/к/файлу.dcm      Анализ отдельного DICOM файла
+    '/путь/к/файлам/*'     Анализ файлов по glob-паттерну
+    --help, -h             Показать эту справку
+
+ОПЦИИ МОДЕЛИ:
+    --model=4b|27b         Выбор модели MedGemma (по умолчанию: 4b)
+    --prompt="текст"       Пользовательский промпт для анализа
+    --lang=ЯЗЫК            Язык ответа: en, ru (по умолчанию: en)
+
+ОПЦИИ CT WINDOWING:
+    --wl=ЧИСЛО             Window Level (по умолчанию: -550)
+    --ww=ЧИСЛО             Window Width (по умолчанию: 1600)
+    --window=WL,WW         Установить WL и WW одной командой
+    --pneumonia-window=ТИП Специальные окна: lung_soft, infection, standard_lung
+
+ОПЦИИ ОБРАБОТКИ:
+    --batch-size=ЧИСЛО     Размер батча для GPU (по умолчанию: 8)
+    --debug                Анализировать каждый 5-й файл (для тестирования)
+
+ПРИМЕРЫ:
+    # Анализ папки с файлами
+    python dicom_analyzer.py /data/dicom_files/
+    
+    # Анализ одного файла
+    python dicom_analyzer.py /data/scan.dcm
+    
+    # Анализ диапазона файлов (glob-паттерны)
+    python dicom_analyzer.py '/data/example/abnormal/1/IMG-000*'
+    python dicom_analyzer.py '/data/scans/patient_*/slice_[0-9][0-9].dcm'
+    python dicom_analyzer.py '/data/study/IMG-00[1-5]*.dcm'
+    
+    # Дебаг режим с моделью 27B
+    python dicom_analyzer.py --debug --model=27b /data/
+    
+    # Пользовательский промпт с glob-паттерном
+    python dicom_analyzer.py --prompt="Найди признаки пневмонии" '/data/covid_cases/IMG-*.dcm'
+    
+    # Ответ на русском языке
+    python dicom_analyzer.py --lang=ru '/data/example/abnormal/1/IMG-000*'
+    
+    # Специальное окно для инфекций
+    python dicom_analyzer.py --pneumonia-window=infection '/data/pneumonia/IMG-*.dcm'
+
+DOCKER ПРИМЕРЫ:
+    # Анализ папки через Docker
+    docker-compose run --rm dicom-analyzer /data
+    
+    # С пользовательскими параметрами
+    docker-compose run --rm dicom-analyzer --model=27b --debug /data
+"""
+    print(help_text)
+
+def expand_glob_pattern(pattern):
+    """Расширение glob-паттерна в список файлов"""
+    try:
+        # Проверяем, содержит ли путь glob-символы
+        if any(char in pattern for char in ['*', '?', '[', ']']):
+            files = glob.glob(pattern)
+            # Фильтруем только DICOM файлы
+            dicom_files = []
+            for file_path in files:
+                if os.path.isfile(file_path):
+                    # Проверяем расширение или пытаемся прочитать как DICOM
+                    if (file_path.lower().endswith(('.dcm', '.dicom')) or 
+                        not os.path.splitext(file_path)[1]):  # файлы без расширения
+                        dicom_files.append(file_path)
+            
+            dicom_files.sort()  # Сортируем для предсказуемого порядка
+            print(f"🔍 Найдено {len(dicom_files)} DICOM файлов по паттерну: {pattern}")
+            return dicom_files
+        else:
+            # Обычный путь без glob-символов
+            return [pattern] if os.path.exists(pattern) else []
+    except Exception as e:
+        print(f"❌ Ошибка при обработке паттерна '{pattern}': {e}")
+        return []
+
+def analyze_single_file(file_path, analyzer):
+    """Анализ отдельного DICOM файла"""
+    print(f"\n📁 Анализируем файл: {file_path}")
+    
+    if not os.path.exists(file_path):
+        print(f"❌ Файл не найден: {file_path}")
+        return
+    
+    try:
+        # Загружаем и обрабатываем DICOM файл
+        image = analyzer.load_dicom_as_image(file_path)
+        if image is None:
+            print(f"❌ Не удалось загрузить DICOM файл: {file_path}")
+            return
+        
+        # Анализируем изображение
+        result = analyzer.analyze_image(image, file_path)
+        
+        # Выводим результат
+        print(f"\n🔍 РЕЗУЛЬТАТ АНАЛИЗА:")
+        print(f"Файл: {result['file_name']}")
+        print(f"Анализ: {result['analysis']}")
+        print("="*60)
+        
+    except Exception as e:
+        print(f"❌ Ошибка при анализе файла {file_path}: {e}")
+
+def analyze_file_list(file_list, analyzer):
+    """Анализ списка DICOM файлов с батчевой обработкой"""
+    if not file_list:
+        print("❌ Список файлов пуст")
+        return
+    
+    print(f"\n📋 Анализируем {len(file_list)} файлов батчами...")
+    
+    # Если один файл - используем analyze_single_file
+    if len(file_list) == 1:
+        analyze_single_file(file_list[0], analyzer)
+        return
+    
+    # Загружаем все изображения с минимальным выводом
+    print("🔄 Загрузка и конвертация DICOM файлов...")
+    images_and_paths = []
+    
+    for file_path in tqdm(file_list, desc="Загрузка DICOM", leave=False):
+        try:
+            if not os.path.exists(file_path):
+                continue
+                
+            # Загружаем DICOM без вывода параметров для каждого файла
+            image = analyzer.load_dicom_as_image(file_path, silent=True)
+            if image is not None:
+                images_and_paths.append((image, file_path))
+                
+        except Exception:
+            continue  # Тихо пропускаем проблемные файлы
+    
+    if not images_and_paths:
+        print("❌ Не удалось загрузить ни одного файла")
+        return
+    
+    print(f"✅ Загружено {len(images_and_paths)} файлов")
+    print("🤖 Запуск батчевого анализа с MedGemma...")
+    
+    # Батчевый анализ
+    try:
+        results = analyzer.analyze_batch([img for img, _ in images_and_paths], 
+                                       [path for _, path in images_and_paths])
+        
+        # Создаем общий отчет
+        if results:
+            combined_report = analyzer.create_combined_analysis(results)
+            print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
+            print("="*80)
+            print(combined_report)
+            print("="*80)
+        else:
+            print("❌ Не удалось проанализировать файлы")
+            
+    except Exception as e:
+        print(f"❌ Ошибка при батчевом анализе: {e}")
+        print("🔄 Переключаемся на поштучный анализ...")
+        
+        # Fallback - поштучный анализ без лишнего вывода
+        results = []
+        for image, file_path in tqdm(images_and_paths, desc="Анализ файлов"):
+            try:
+                result = analyzer.analyze_image(image, file_path)
+                results.append(result)
+            except Exception:
+                continue
+        
+        if results:
+            combined_report = analyzer.create_combined_analysis(results)
+            print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
+            print("="*80)
+            print(combined_report)
+            print("="*80)
+
 def main():
     """Основная функция"""
-    print("🔬 DICOM АНАЛИЗАТОР С MEDGEMMA (УПРОЩЕННАЯ ВЕРСИЯ)")
+    print("🔬 DICOM АНАЛИЗАТОР С MEDGEMMA")
     print("="*60)
+    
+    # Проверяем справку
+    if "--help" in sys.argv or "-h" in sys.argv:
+        show_help()
+        return
     
     # Проверяем флаг debug в аргументах командной строки
     global DEBUG_MODE
@@ -609,6 +900,8 @@ def main():
     window_level = DEFAULT_WINDOW_LEVEL
     window_width = DEFAULT_WINDOW_WIDTH
     batch_size = None
+    custom_prompt = None
+    language = "en"
     
     # Обработка аргументов командной строки
     args_to_remove = []
@@ -654,6 +947,20 @@ def main():
         elif arg == "--batch-size" and i + 1 < len(sys.argv):
             batch_size = int(sys.argv[i + 1])
             args_to_remove.extend([arg, sys.argv[i + 1]])
+        elif arg.startswith("--prompt="):
+            # Пользовательский промпт
+            custom_prompt = arg.split("=", 1)[1].strip('"').strip("'")
+            args_to_remove.append(arg)
+        elif arg == "--prompt" and i + 1 < len(sys.argv):
+            custom_prompt = sys.argv[i + 1].strip('"').strip("'")
+            args_to_remove.extend([arg, sys.argv[i + 1]])
+        elif arg.startswith("--lang="):
+            # Язык ответа
+            language = arg.split("=")[1].lower()
+            args_to_remove.append(arg)
+        elif arg == "--lang" and i + 1 < len(sys.argv):
+            language = sys.argv[i + 1].lower()
+            args_to_remove.extend([arg, sys.argv[i + 1]])
     
     # Удаляем обработанные аргументы
     for arg in args_to_remove:
@@ -668,16 +975,57 @@ def main():
     # Создание анализатора
     analyzer = DICOMAnalyzer(model_name=model_name, window_level=window_level, window_width=window_width, batch_size=batch_size)
     
+    # Применение языковых настроек
+    global DEFAULT_ANALYSIS_PROMPT, CURRENT_LANGUAGE
+    if language in LANGUAGE_PROMPTS:
+        DEFAULT_ANALYSIS_PROMPT = LANGUAGE_PROMPTS[language]
+        CURRENT_LANGUAGE = language
+        ANALYSIS_PROMPTS["universal"] = DEFAULT_ANALYSIS_PROMPT
+        ANALYSIS_PROMPTS["single_image"] = DEFAULT_ANALYSIS_PROMPT
+        ANALYSIS_PROMPTS["batch_analysis"] = DEFAULT_ANALYSIS_PROMPT
+        
+        lang_names = {"en": "English", "ru": "Русский"}
+        print(f"🌍 Язык ответа: {lang_names.get(language, language.upper())}")
+    else:
+        print(f"⚠️  Неподдерживаемый язык '{language}'. Доступные: {list(LANGUAGE_PROMPTS.keys())}")
+        print("🌍 Используется английский язык по умолчанию")
+        language = "en"
+        DEFAULT_ANALYSIS_PROMPT = LANGUAGE_PROMPTS["en"]
+    
+    # Применение пользовательского промпта (переопределяет языковой)
+    if custom_prompt:
+        DEFAULT_ANALYSIS_PROMPT = custom_prompt
+        ANALYSIS_PROMPTS["universal"] = custom_prompt
+        ANALYSIS_PROMPTS["single_image"] = custom_prompt
+        ANALYSIS_PROMPTS["batch_analysis"] = custom_prompt
+        print(f"💬 Используется пользовательский промпт: {custom_prompt[:50]}...")
+    
     # Проверка аргументов командной строки
     if len(sys.argv) > 1:
-        # Анализ файла или директории из аргументов
-        path = sys.argv[1]
-        if os.path.isfile(path):
-            analyzer.analyze_single_file(path)
-        elif os.path.isdir(path):
-            analyzer.analyze_directory(path)
+        # Анализ файла, директории или glob-паттерна из аргументов
+        path_pattern = sys.argv[1]
+        
+        # Проверяем, является ли это glob-паттерном
+        if any(char in path_pattern for char in ['*', '?', '[', ']']):
+            # Обрабатываем как glob-паттерн
+            file_list = expand_glob_pattern(path_pattern)
+            if file_list:
+                analyze_file_list(file_list, analyzer)
+            else:
+                print(f"❌ Не найдено файлов по паттерну: {path_pattern}")
+                return
+        elif os.path.isfile(path_pattern):
+            # Анализ отдельного файла
+            analyze_single_file(path_pattern, analyzer)
+        elif os.path.isdir(path_pattern):
+            # Анализ директории
+            analyzer.analyze_directory(path_pattern)
         else:
-            print(f"Путь {path} не найден!")
+            print(f"❌ Путь или паттерн '{path_pattern}' не найден!")
+            print("💡 Примеры использования:")
+            print("   python dicom_analyzer.py /data/scan.dcm")
+            print("   python dicom_analyzer.py /data/scans/")
+            print("   python dicom_analyzer.py '/data/example/abnormal/1/IMG-000*'")
             return
     else:
         # Используем путь из переменной DICOM_FOLDER_PATH
