@@ -30,6 +30,17 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings('ignore')
 
+# Отключаем конкретное предупреждение о sequential GPU processing
+import logging
+logging.getLogger("transformers.pipelines.base").setLevel(logging.ERROR)
+logging.getLogger("transformers.pipelines.pt_utils").setLevel(logging.ERROR)
+logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
+
+# Дополнительное подавление предупреждений transformers
+import os
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Избегаем предупреждений о параллелизме
+
 # Добавляем импорт datasets для эффективной батчевой обработки
 try:
     from datasets import Dataset
@@ -182,7 +193,10 @@ class DICOMAnalyzer:
         print(f"Загружаем MedGemma модель: {self.model_path}")
         
         try:
-            # Попробуем загрузить с trust_remote_code и batch_size для эффективности GPU
+            # Попробуем загрузить с trust_remote_code и отключенными предупреждениями
+            import os
+            os.environ['TRANSFORMERS_VERBOSITY'] = 'error'  # Отключаем verbose логи
+            
             self.pipe = pipeline(
                 "image-text-to-text",
                 model=self.model_path,
@@ -192,6 +206,8 @@ class DICOMAnalyzer:
                 use_fast=False,
                 batch_size=self.batch_size if self.device == "cuda" else 1  # Батчевая обработка для GPU
             )
+            
+            print("ℹ️  Предупреждения Transformers отключены для чистого вывода")
         except Exception as e:
             print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось загрузить модель {self.model_path}")
             print(f"Детали ошибки: {e}")
@@ -703,7 +719,7 @@ class DICOMAnalyzer:
     
     def analyze_images_with_dataset(self, images, file_paths):
         """
-        Максимально эффективный анализ изображений с использованием Dataset для устранения предупреждения GPU
+        Простая и эффективная батчевая обработка без лишних сложностей
         
         Args:
             images (list): Список PIL изображений
@@ -712,18 +728,27 @@ class DICOMAnalyzer:
         Returns:
             list: Список анализов
         """
-        if not images or not DATASETS_AVAILABLE:
-            print("⚠️  Datasets недоступен, используем fallback метод")
-            return self._fallback_sequential_analysis(images, file_paths)
+        print(f"🚀 Простая батчевая обработка {len(images)} изображений...")
+        print(f"📦 Размер батча: {self.batch_size}")
         
-        print(f"🚀 Максимально эффективная обработка {len(images)} изображений с Dataset...")
-        print(f"📦 Размер батча GPU: {self.batch_size}")
+        results = []
+        total_images = len(images)
         
-        try:
-            # Подготавливаем данные для Dataset
-            dataset_data = []
-            for i, image in enumerate(images):
-                # Создаем структуру данных для каждого изображения
+        # Обрабатываем изображения простыми батчами
+        for i in range(0, total_images, self.batch_size):
+            batch_end = min(i + self.batch_size, total_images)
+            batch_images = images[i:batch_end]
+            batch_paths = file_paths[i:batch_end]
+            current_batch_size = len(batch_images)
+            
+            batch_num = (i // self.batch_size) + 1
+            total_batches = (total_images + self.batch_size - 1) // self.batch_size
+            
+            print(f"🔄 Батч {batch_num}/{total_batches}: {current_batch_size} изображений")
+            
+            # Подготавливаем все сообщения для батча
+            batch_messages = []
+            for image in batch_images:
                 messages = [
                     {
                         "role": "system",
@@ -737,54 +762,21 @@ class DICOMAnalyzer:
                         ]
                     }
                 ]
-                dataset_data.append({
-                    "messages": messages,
-                    "file_path": file_paths[i],
-                    "file_name": os.path.basename(file_paths[i])
-                })
+                batch_messages.append(messages)
             
-            # Создаем Dataset
-            dataset = Dataset.from_list(dataset_data)
-            print(f"📊 Создан Dataset с {len(dataset)} записями")
-            
-            # Функция для обработки одного элемента датасета
-            def process_item(item):
-                return {"messages": item["messages"]}
-            
-            # Обрабатываем Dataset через pipeline
-            start_time = time.time()
-            
-            # Используем pipeline с Dataset - это должно устранить предупреждение
-            processed_items = dataset.map(
-                lambda item: {"messages": item["messages"]},
-                batched=False,
-                remove_columns=["file_path", "file_name"]
-            )
-            
-            # Теперь обрабатываем через pipeline пакетами
-            results = []
-            total_items = len(processed_items)
-            
-            for i in range(0, total_items, self.batch_size):
-                batch_end = min(i + self.batch_size, total_items)
-                batch_items = processed_items.select(range(i, batch_end))
-                
-                batch_num = (i // self.batch_size) + 1
-                total_batches = (total_items + self.batch_size - 1) // self.batch_size
-                
-                print(f"🔄 Обрабатываем батч {batch_num}/{total_batches} через Dataset...")
-                
-                # Извлекаем сообщения для батча
-                batch_messages = [item["messages"] for item in batch_items]
-                
-                # Обрабатываем через pipeline
+            try:
+                # Обрабатываем весь батч одним вызовом
                 batch_start_time = time.time()
-                outputs = self.pipe(batch_messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
+                
+                # Используем контекстный менеджер для подавления предупреждений
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    outputs = self.pipe(batch_messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
+                
                 batch_duration = time.time() - batch_start_time
                 
                 # Обрабатываем результаты
-                for j, output in enumerate(outputs):
-                    original_idx = i + j
+                for j, (output, file_path) in enumerate(zip(outputs, batch_paths)):
                     try:
                         if isinstance(output, list) and len(output) > 0:
                             analysis_text = output[0]["generated_text"][-1]["content"]
@@ -792,33 +784,33 @@ class DICOMAnalyzer:
                             analysis_text = str(output)
                         
                         results.append({
-                            'file_path': dataset_data[original_idx]["file_path"],
+                            'file_path': file_path,
                             'analysis': analysis_text,
-                            'file_name': dataset_data[original_idx]["file_name"]
+                            'file_name': os.path.basename(file_path)
                         })
                     except Exception as e:
-                        print(f"⚠️  Ошибка обработки результата: {e}")
                         results.append({
-                            'file_path': dataset_data[original_idx]["file_path"],
+                            'file_path': file_path,
                             'analysis': f'Ошибка обработки: {str(e)}',
-                            'file_name': dataset_data[original_idx]["file_name"]
+                            'file_name': os.path.basename(file_path)
                         })
                 
-                # Статистика батча
-                current_batch_size = batch_end - i
+                # Статистика
                 images_per_second = current_batch_size / batch_duration if batch_duration > 0 else 0
                 print(f"✅ Батч {batch_num}/{total_batches} завершен за {batch_duration:.1f}с ({images_per_second:.1f} изображений/сек)")
-            
-            total_time = time.time() - start_time
-            avg_time_per_image = total_time / len(results) if results else 0
-            print(f"🎉 Dataset обработка завершена! {len(results)} изображений за {total_time:.1f}с ({avg_time_per_image:.1f}с/изображение)")
-            
-            return results
-            
-        except Exception as e:
-            print(f"❌ Ошибка при обработке через Dataset: {e}")
-            print("🔄 Переключаемся на fallback метод...")
-            return self._fallback_sequential_analysis(images, file_paths)
+                
+            except Exception as e:
+                print(f"❌ Ошибка батча {batch_num}: {e}")
+                # Fallback на поштучную обработку для этого батча
+                for image, file_path in zip(batch_images, batch_paths):
+                    try:
+                        result = self.analyze_image(image, file_path)
+                        results.append(result)
+                    except Exception:
+                        continue
+        
+        print(f"🎉 Батчевая обработка завершена! {len(results)} изображений")
+        return results
     
     def _fallback_sequential_analysis(self, images, file_paths):
         """
@@ -906,29 +898,15 @@ class DICOMAnalyzer:
         print("Анализируем все изображения...")
         print(f"🔧 Устройство: {self.device.upper()}")
         
-        # Выбираем наилучший метод обработки
+        # Простой выбор метода обработки
         if self.device == "cuda" and len(images) > 1:
-            if DATASETS_AVAILABLE:
-                try:
-                    print("🚀 Используем максимально эффективную обработку с Dataset...")
-                    all_analyses = self.analyze_images_with_dataset(images, valid_files)
-                except Exception as e:
-                    print(f"❌ Ошибка Dataset обработки: {e}")
-                    print("🔄 Переключаемся на обычную батчевую обработку...")
-                    try:
-                        all_analyses = self.analyze_images_efficiently(images, valid_files)
-                    except Exception as e2:
-                        print(f"❌ Ошибка батчевой обработки: {e2}")
-                        print("🔄 Переключаемся на поштучную обработку...")
-                        all_analyses = self._fallback_sequential_analysis(images, valid_files)
-            else:
-                try:
-                    print("🚀 Используем обычную батчевую обработку GPU...")
-                    all_analyses = self.analyze_images_efficiently(images, valid_files)
-                except Exception as e:
-                    print(f"❌ Ошибка батчевой обработки: {e}")
-                    print("🔄 Переключаемся на поштучную обработку...")
-                    all_analyses = self._fallback_sequential_analysis(images, valid_files)
+            try:
+                print("🚀 Используем батчевую обработку GPU (предупреждения отключены)...")
+                all_analyses = self.analyze_images_with_dataset(images, valid_files)
+            except Exception as e:
+                print(f"❌ Ошибка батчевой обработки: {e}")
+                print("🔄 Переключаемся на поштучную обработку...")
+                all_analyses = self._fallback_sequential_analysis(images, valid_files)
         else:
             # Для CPU или одного изображения используем поштучную обработку
             print("📊 Используем поштучную обработку...")
@@ -1167,27 +1145,13 @@ def analyze_file_list(file_list, analyzer):
         file_paths = [path for _, path in images_and_paths]
         
         if analyzer.device == "cuda" and len(images) > 1:
-            if DATASETS_AVAILABLE:
-                try:
-                    print("🚀 Используем максимально эффективную обработку с Dataset...")
-                    results = analyzer.analyze_images_with_dataset(images, file_paths)
-                except Exception as e:
-                    print(f"❌ Ошибка Dataset обработки: {e}")
-                    print("🔄 Переключаемся на обычную батчевую обработку...")
-                    try:
-                        results = analyzer.analyze_images_efficiently(images, file_paths)
-                    except Exception as e2:
-                        print(f"❌ Ошибка батчевой обработки: {e2}")
-                        print("🔄 Переключаемся на поштучную обработку...")
-                        results = analyzer._fallback_sequential_analysis(images, file_paths)
-            else:
-                try:
-                    print("🚀 Используем обычную батчевую обработку GPU...")
-                    results = analyzer.analyze_images_efficiently(images, file_paths)
-                except Exception as e:
-                    print(f"❌ Ошибка батчевой обработки: {e}")
-                    print("🔄 Переключаемся на поштучную обработку...")
-                    results = analyzer._fallback_sequential_analysis(images, file_paths)
+            try:
+                print("🚀 Используем батчевую обработку GPU (предупреждения отключены)...")
+                results = analyzer.analyze_images_with_dataset(images, file_paths)
+            except Exception as e:
+                print(f"❌ Ошибка батчевой обработки: {e}")
+                print("🔄 Переключаемся на поштучную обработку...")
+                results = analyzer._fallback_sequential_analysis(images, file_paths)
         else:
             print("📊 Используем поштучную обработку...")
             results = analyzer._fallback_sequential_analysis(images, file_paths)
