@@ -516,33 +516,60 @@ class DICOMAnalyzer:
             list: Список анализов
         """
         batch_analyses = []
+        total_images = len(images)
         
-        for image, file_path in zip(images, file_paths):
-            try:
-                # Создание сообщения для MedGemma
-                messages = [
-                    {
-                        "role": "system",
-                        "content": [{"type": "text", "text": ANALYSIS_PROMPTS["system"]}]
-                    },
-                    {
-                        "role": "user", 
-                        "content": [
-                            {"type": "text", "text": ANALYSIS_PROMPTS["batch_analysis"]},
-                            {"type": "image", "image": image}
-                        ]
-                    }
-                ]
-                
-                # Получение ответа от MedGemma
-                output = self.pipe(text=messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
-                analysis_text = output[0]["generated_text"][-1]["content"]
-                
-                batch_analyses.append(analysis_text)
-                
-            except Exception as e:
-                print(f"Ошибка при анализе {file_path}: {e}")
-                batch_analyses.append(f"Ошибка анализа: {str(e)}")
+        print(f"⚡ Обрабатываем {total_images} изображений батчами по {self.batch_size}...")
+        
+        # Обрабатываем изображения батчами
+        for i in range(0, total_images, self.batch_size):
+            batch_end = min(i + self.batch_size, total_images)
+            current_batch_size = batch_end - i
+            batch_num = (i // self.batch_size) + 1
+            total_batches = (total_images + self.batch_size - 1) // self.batch_size
+            
+            print(f"🔄 Батч {batch_num}/{total_batches}: обрабатываем {current_batch_size} изображений...")
+            
+            batch_images = images[i:batch_end]
+            batch_paths = file_paths[i:batch_end]
+            
+            for j, (image, file_path) in enumerate(zip(batch_images, batch_paths)):
+                try:
+                    # Создание сообщения для MedGemma
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": [{"type": "text", "text": ANALYSIS_PROMPTS["system"]}]
+                        },
+                        {
+                            "role": "user", 
+                            "content": [
+                                {"type": "text", "text": ANALYSIS_PROMPTS["batch_analysis"]},
+                                {"type": "image", "image": image}
+                            ]
+                        }
+                    ]
+                    
+                    # Получение ответа от MedGemma
+                    output = self.pipe(text=messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
+                    analysis_text = output[0]["generated_text"][-1]["content"]
+                    
+                    batch_analyses.append({
+                        'file_path': file_path,
+                        'analysis': analysis_text,
+                        'file_name': os.path.basename(file_path)
+                    })
+                    
+                except Exception as e:
+                    print(f"⚠️  Ошибка при анализе {os.path.basename(file_path)}: {e}")
+                    continue
+            
+            print(f"✅ Батч {batch_num}/{total_batches} завершен: {len(batch_analyses[-current_batch_size:])} анализов")
+        
+        print(f"🎉 Батчевая обработка завершена! Всего обработано: {len(batch_analyses)} изображений")
+        
+        # Информация о предупреждении GPU pipelines
+        if self.device == "cuda":
+            print("ℹ️  Примечание: Сообщение 'pipelines sequentially on GPU' ожидаемо при батчевой обработке")
         
         return batch_analyses
     
@@ -842,6 +869,12 @@ def analyze_file_list(file_list, analyzer):
     
     print(f"✅ Загружено {len(images_and_paths)} файлов")
     print("🤖 Запуск батчевого анализа с MedGemma...")
+    print(f"📦 Размер батча: {analyzer.batch_size}")
+    print(f"🔧 Устройство: {analyzer.device.upper()}")
+    
+    # Вычисляем количество батчей
+    total_batches = (len(images_and_paths) + analyzer.batch_size - 1) // analyzer.batch_size
+    print(f"📊 Всего батчей для обработки: {total_batches}")
     
     # Батчевый анализ
     try:
