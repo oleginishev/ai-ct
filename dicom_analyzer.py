@@ -912,8 +912,14 @@ class DICOMAnalyzer:
             all_analyses = self._fallback_sequential_analysis(images, valid_files)
         
         # Создаем общий анализ на основе всех индивидуальных анализов
-        combined_result = self.create_combined_analysis(all_analyses, valid_files)
-        self.results.append(combined_result)
+        if all_analyses:
+            # Извлекаем анализы и пути из результатов
+            analyses = [result['analysis'] for result in all_analyses]
+            file_paths = [result['file_path'] for result in all_analyses]
+            combined_result = self.create_combined_analysis(analyses, file_paths)
+            self.results.append(combined_result)
+        else:
+            print("❌ Нет результатов анализа для создания общего отчета")
     
     def analyze_single_file(self, file_path):
         """
