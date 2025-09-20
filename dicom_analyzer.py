@@ -18,6 +18,7 @@ DICOM Analyzer Script (Simplified)
 import os
 import sys
 import glob
+import time
 import numpy as np
 from pathlib import Path
 import pydicom
@@ -520,6 +521,8 @@ class DICOMAnalyzer:
         
         print(f"⚡ Обрабатываем {total_images} изображений батчами по {self.batch_size}...")
         
+        total_processing_time = 0
+        
         # Обрабатываем изображения батчами
         for i in range(0, total_images, self.batch_size):
             batch_end = min(i + self.batch_size, total_images)
@@ -528,6 +531,7 @@ class DICOMAnalyzer:
             total_batches = (total_images + self.batch_size - 1) // self.batch_size
             
             print(f"🔄 Батч {batch_num}/{total_batches}: обрабатываем {current_batch_size} изображений...")
+            batch_start_time = time.time()
             
             batch_images = images[i:batch_end]
             batch_paths = file_paths[i:batch_end]
@@ -563,9 +567,22 @@ class DICOMAnalyzer:
                     print(f"⚠️  Ошибка при анализе {os.path.basename(file_path)}: {e}")
                     continue
             
-            print(f"✅ Батч {batch_num}/{total_batches} завершен: {len(batch_analyses[-current_batch_size:])} анализов")
+            batch_end_time = time.time()
+            batch_duration = batch_end_time - batch_start_time
+            total_processing_time += batch_duration
+            
+            # Вычисляем скорость обработки
+            images_per_second = current_batch_size / batch_duration if batch_duration > 0 else 0
+            
+            print(f"✅ Батч {batch_num}/{total_batches} завершен: {current_batch_size} анализов за {batch_duration:.1f}с ({images_per_second:.1f} изображений/сек)")
+        
+        # Финальная статистика
+        avg_time_per_image = total_processing_time / total_images if total_images > 0 else 0
+        total_images_per_second = total_images / total_processing_time if total_processing_time > 0 else 0
         
         print(f"🎉 Батчевая обработка завершена! Всего обработано: {len(batch_analyses)} изображений")
+        print(f"⏱️  Общее время обработки: {total_processing_time:.1f} секунд")
+        print(f"📈 Средняя скорость: {total_images_per_second:.1f} изображений/сек ({avg_time_per_image:.1f}с на изображение)")
         
         # Информация о предупреждении GPU pipelines
         if self.device == "cuda":
@@ -883,10 +900,13 @@ def analyze_file_list(file_list, analyzer):
         
         # Создаем общий отчет
         if results:
-            combined_report = analyzer.create_combined_analysis(results)
+            # Извлекаем анализы и пути из результатов
+            analyses = [result['analysis'] for result in results]
+            file_paths = [result['file_path'] for result in results]
+            combined_report = analyzer.create_combined_analysis(analyses, file_paths)
             print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
-            print(combined_report)
+            print(combined_report['analysis'])
             print("="*80)
         else:
             print("❌ Не удалось проанализировать файлы")
@@ -905,10 +925,13 @@ def analyze_file_list(file_list, analyzer):
                 continue
         
         if results:
-            combined_report = analyzer.create_combined_analysis(results)
+            # Извлекаем анализы и пути из результатов
+            analyses = [result['analysis'] for result in results]
+            file_paths = [result['file_path'] for result in results]
+            combined_report = analyzer.create_combined_analysis(analyses, file_paths)
             print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
-            print(combined_report)
+            print(combined_report['analysis'])
             print("="*80)
 
 def main():
