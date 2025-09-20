@@ -30,16 +30,9 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings('ignore')
 
-# Отключаем конкретное предупреждение о sequential GPU processing
-import logging
-logging.getLogger("transformers.pipelines.base").setLevel(logging.ERROR)
-logging.getLogger("transformers.pipelines.pt_utils").setLevel(logging.ERROR)
-logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
-
-# Дополнительное подавление предупреждений transformers
+# Минимальное подавление только критичных предупреждений
 import os
-os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Избегаем предупреждений о параллелизме
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'  # Избегаем предупреждений о параллелизме токенизатора
 
 # Добавляем импорт datasets для эффективной батчевой обработки
 try:
@@ -194,10 +187,7 @@ class DICOMAnalyzer:
         print(f"Загружаем MedGemma модель: {self.model_path}")
         
         try:
-            # Попробуем загрузить с trust_remote_code и отключенными предупреждениями
-            import os
-            os.environ['TRANSFORMERS_VERBOSITY'] = 'error'  # Отключаем verbose логи
-            
+            # Загружаем MedGemma с базовыми настройками
             self.pipe = pipeline(
                 "image-text-to-text",
                 model=self.model_path,
@@ -207,8 +197,6 @@ class DICOMAnalyzer:
                 use_fast=False,
                 batch_size=self.batch_size if self.device == "cuda" else 1  # Батчевая обработка для GPU
             )
-            
-            print("ℹ️  Предупреждения Transformers отключены для чистого вывода")
         except Exception as e:
             print(f"❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось загрузить модель {self.model_path}")
             print(f"Детали ошибки: {e}")
@@ -731,6 +719,8 @@ class DICOMAnalyzer:
         """
         print(f"🚀 Простая батчевая обработка {len(images)} изображений...")
         print(f"📦 Размер батча: {self.batch_size}")
+        if self.device == "cuda":
+            print("ℹ️  Предупреждение 'pipelines sequentially on GPU' - это нормально для MedGemma")
         
         results = []
         total_images = len(images)
@@ -768,12 +758,7 @@ class DICOMAnalyzer:
             try:
                 # Обрабатываем весь батч одним вызовом
                 batch_start_time = time.time()
-                
-                # Используем контекстный менеджер для подавления предупреждений
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    outputs = self.pipe(batch_messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
-                
+                outputs = self.pipe(batch_messages, max_new_tokens=GENERATION_PARAMS["batch_tokens"])
                 batch_duration = time.time() - batch_start_time
                 
                 # Обрабатываем результаты
@@ -915,7 +900,7 @@ class DICOMAnalyzer:
         # Простой выбор метода обработки
         if self.device == "cuda" and len(images) > 1:
             try:
-                print("🚀 Используем батчевую обработку GPU (предупреждения отключены)...")
+                print("🚀 Используем батчевую обработку GPU...")
                 all_analyses = self.analyze_images_with_dataset(images, valid_files)
             except Exception as e:
                 print(f"❌ Ошибка батчевой обработки: {e}")
@@ -1160,7 +1145,7 @@ def analyze_file_list(file_list, analyzer):
         
         if analyzer.device == "cuda" and len(images) > 1:
             try:
-                print("🚀 Используем батчевую обработку GPU (предупреждения отключены)...")
+                print("🚀 Используем батчевую обработку GPU...")
                 results = analyzer.analyze_images_with_dataset(images, file_paths)
             except Exception as e:
                 print(f"❌ Ошибка батчевой обработки: {e}")
