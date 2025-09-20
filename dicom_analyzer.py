@@ -1269,10 +1269,13 @@ def analyze_file_list(file_list, analyzer):
     print(f"\n📋 Анализируем {len(file_list)} файлов батчами...")
     
     # Отправляем уведомление о начале анализа
+    print(f"🔥 DEBUG: analyzer.telegram={'ДА' if analyzer.telegram else 'НЕТ'}")
     if analyzer.telegram:
         print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О НАЧАЛЕ АНАЛИЗА В TELEGRAM...")
         result = analyzer.telegram.send_status("analysis_start", f"📋 Files to process: {len(file_list)}\n🔧 Device: {analyzer.device.upper()}\n🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}")
         print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ НАЧАЛА: {result}")
+    else:
+        print("🔥 DEBUG: analyzer.telegram НЕТ - уведомления не отправляются!")
     
     # Если один файл - используем analyze_single_file
     if len(file_list) == 1:
@@ -1517,8 +1520,11 @@ def main():
     
     # Создание Telegram notifier
     telegram_notifier = None
+    print(f"🔥 DEBUG: telegram_token={'ДА' if telegram_token else 'НЕТ'}, telegram_chat_id={'ДА' if telegram_chat_id else 'НЕТ'}")
     if telegram_token and telegram_chat_id:
+        print("🔥 DEBUG: Создаю TelegramNotifier...")
         telegram_notifier = TelegramNotifier(telegram_token, telegram_chat_id)
+        print(f"🔥 DEBUG: TelegramNotifier создан, enabled={telegram_notifier.enabled}")
         # Отправляем уведомление о запуске (будет дополнено позже с данными о пути)
     elif telegram_token or telegram_chat_id:
         print("⚠️  Для Telegram уведомлений нужны оба параметра: --telegram-token и --telegram-chat")
@@ -1575,7 +1581,9 @@ def main():
         path_pattern = sys.argv[1]
         
         # Отправляем полное уведомление о запуске с информацией о данных
+        print(f"🔥 DEBUG: telegram_notifier={'ДА' if telegram_notifier else 'НЕТ'}")
         if telegram_notifier:
+            print("🔥 DEBUG: Готовлю уведомление о запуске...")
             start_details = f"🤖 Model: MedGemma-{model_name.upper()}\n"
             start_details += f"🔧 Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}\n"
             start_details += f"🪟 Window: WL={window_level}, WW={window_width}\n"
@@ -1589,6 +1597,8 @@ def main():
             print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О ЗАПУСКЕ В TELEGRAM...")
             result = telegram_notifier.send_status("start", start_details)
             print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ: {result}")
+        else:
+            print("🔥 DEBUG: telegram_notifier НЕТ - уведомления не отправляются!")
         
         # Проверяем, является ли это glob-паттерном
         if any(char in path_pattern for char in ['*', '?', '[', ']']):
