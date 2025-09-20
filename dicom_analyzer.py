@@ -1262,9 +1262,15 @@ def analyze_file_list(file_list, analyzer):
     """Анализ списка DICOM файлов с батчевой обработкой"""
     if not file_list:
         print("❌ Список файлов пуст")
+        if analyzer.telegram:
+            analyzer.telegram.send_status("error", "File list is empty")
         return
     
     print(f"\n📋 Анализируем {len(file_list)} файлов батчами...")
+    
+    # Отправляем уведомление о начале анализа
+    if analyzer.telegram:
+        analyzer.telegram.send_status("analysis_start", f"📋 Files to process: {len(file_list)}\n🔧 Device: {analyzer.device.upper()}\n🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}")
     
     # Если один файл - используем analyze_single_file
     if len(file_list) == 1:
@@ -1323,12 +1329,29 @@ def analyze_file_list(file_list, analyzer):
             analyses = [result['analysis'] for result in results]
             file_paths = [result['file_path'] for result in results]
             combined_report = analyzer.create_combined_analysis(analyses, file_paths)
+            
+            # Уведомление о завершении анализа
+            if analyzer.telegram:
+                analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files\n⏱️ Analysis completed successfully")
+                
+                # Отправка отчета в Telegram (на английском)
+                report_text = f"**DICOM Analysis Report**\n\n"
+                report_text += f"📋 **Files Processed:** {len(results)}\n"
+                report_text += f"🔧 **Device:** {analyzer.device.upper()}\n"
+                report_text += f"🪟 **Window Settings:** WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
+                report_text += f"**ANALYSIS RESULTS:**\n\n"
+                report_text += combined_report['analysis']
+                
+                analyzer.telegram.send_status("report", report_text)
+            
             print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
             print(combined_report['analysis'])
             print("="*80)
         else:
             print("❌ Не удалось проанализировать файлы")
+            if analyzer.telegram:
+                analyzer.telegram.send_status("error", "Failed to analyze files")
             
     except Exception as e:
         print(f"❌ Ошибка при анализе: {e}")
@@ -1352,12 +1375,29 @@ def analyze_file_list(file_list, analyzer):
             analyses = [result['analysis'] for result in results]
             file_paths = [result['file_path'] for result in results]
             combined_report = analyzer.create_combined_analysis(analyses, file_paths)
+            
+            # Уведомление о завершении анализа (fallback)
+            if analyzer.telegram:
+                analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files (fallback mode)\n⏱️ Analysis completed successfully")
+                
+                # Отправка отчета в Telegram (на английском)
+                report_text = f"**DICOM Analysis Report (Fallback)**\n\n"
+                report_text += f"📋 **Files Processed:** {len(results)}\n"
+                report_text += f"🔧 **Device:** {analyzer.device.upper()}\n"
+                report_text += f"🪟 **Window Settings:** WL={analyzer.window_level}, WW={analyzer.window_width}\n\n"
+                report_text += f"**ANALYSIS RESULTS:**\n\n"
+                report_text += combined_report['analysis']
+                
+                analyzer.telegram.send_status("report", report_text)
+            
             print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
             print(combined_report['analysis'])
             print("="*80)
         else:
             print("❌ Не удалось проанализировать файлы (fallback)")
+            if analyzer.telegram:
+                analyzer.telegram.send_status("error", "Failed to analyze files (fallback mode)")
 
 def main():
     """Основная функция"""
