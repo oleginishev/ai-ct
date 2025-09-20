@@ -237,20 +237,30 @@ class TelegramNotifier:
             "error": "❌"
         }
         
+        # Теги для поиска в чате
+        status_tags = {
+            "start": "#DICOM_START #AI_CT #ANALYSIS_STARTED",
+            "analysis_start": "#DICOM_PROCESSING #AI_CT #ANALYSIS_PHASE", 
+            "analysis_complete": "#DICOM_COMPLETE #AI_CT #ANALYSIS_FINISHED",
+            "report": "#DICOM_REPORT #AI_CT #MEDICAL_REPORT #RESULTS",
+            "error": "#DICOM_ERROR #AI_CT #ERROR_LOG"
+        }
+        
         icon = status_icons.get(status, "ℹ️")
+        tags = status_tags.get(status, "#AI_CT #DICOM")
         
         if status == "start":
-            message = f"{icon} *DICOM Analysis Started*\n⏰ {timestamp}\n{details}"
+            message = f"{icon} *DICOM Analysis Started*\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "analysis_start":
-            message = f"{icon} *Analysis Phase Started*\n⏰ {timestamp}\n{details}"
+            message = f"{icon} *Analysis Phase Started*\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "analysis_complete":
-            message = f"{icon} *Analysis Phase Completed*\n⏰ {timestamp}\n{details}"
+            message = f"{icon} *Analysis Phase Completed*\n⏰ {timestamp}\n{details}\n\n{tags}"
         elif status == "report":
-            message = f"{icon} *Final Report*\n⏰ {timestamp}\n\n{details}"
+            message = f"{icon} *Final Report*\n⏰ {timestamp}\n\n{details}\n\n{tags}"
         elif status == "error":
-            message = f"{icon} *Error Occurred*\n⏰ {timestamp}\n{details}"
+            message = f"{icon} *Error Occurred*\n⏰ {timestamp}\n{details}\n\n{tags}"
         else:
-            message = f"{icon} *Status Update*\n⏰ {timestamp}\n{details}"
+            message = f"{icon} *Status Update*\n⏰ {timestamp}\n{details}\n\n{tags}"
             
         return self.send_message(message)
 
@@ -1304,7 +1314,11 @@ def analyze_file_list(file_list, analyzer):
             results = analyzer._fallback_sequential_analysis(images, file_paths)
         
         # Создаем общий отчет
+        print(f"🔍 DEBUG: Количество результатов: {len(results) if results else 0}")
         if results:
+            print(f"🔍 DEBUG: Тип первого результата: {type(results[0])}")
+            print(f"🔍 DEBUG: Ключи первого результата: {list(results[0].keys()) if isinstance(results[0], dict) else 'не словарь'}")
+            
             # Извлекаем анализы и пути из результатов
             analyses = [result['analysis'] for result in results]
             file_paths = [result['file_path'] for result in results]
@@ -1329,7 +1343,11 @@ def analyze_file_list(file_list, analyzer):
             except Exception:
                 continue
         
+        print(f"🔍 DEBUG (fallback): Количество результатов: {len(results) if results else 0}")
         if results:
+            print(f"🔍 DEBUG (fallback): Тип первого результата: {type(results[0])}")
+            print(f"🔍 DEBUG (fallback): Ключи первого результата: {list(results[0].keys()) if isinstance(results[0], dict) else 'не словарь'}")
+            
             # Извлекаем анализы и пути из результатов
             analyses = [result['analysis'] for result in results]
             file_paths = [result['file_path'] for result in results]
@@ -1338,6 +1356,8 @@ def analyze_file_list(file_list, analyzer):
             print("="*80)
             print(combined_report['analysis'])
             print("="*80)
+        else:
+            print("❌ Не удалось проанализировать файлы (fallback)")
 
 def main():
     """Основная функция"""
