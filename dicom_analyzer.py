@@ -1453,9 +1453,7 @@ def main():
     telegram_notifier = None
     if telegram_token and telegram_chat_id:
         telegram_notifier = TelegramNotifier(telegram_token, telegram_chat_id)
-        # Отправляем уведомление о запуске
-        start_details = f"🤖 Model: MedGemma-{model_name.upper()}\n🔧 Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}\n🪟 Window: WL={window_level}, WW={window_width}"
-        telegram_notifier.send_status("start", start_details)
+        # Отправляем уведомление о запуске (будет дополнено позже с данными о пути)
     elif telegram_token or telegram_chat_id:
         print("⚠️  Для Telegram уведомлений нужны оба параметра: --telegram-token и --telegram-chat")
     
@@ -1509,6 +1507,20 @@ def main():
     if len(sys.argv) > 1:
         # Анализ файла, директории или glob-паттерна из аргументов
         path_pattern = sys.argv[1]
+        
+        # Отправляем полное уведомление о запуске с информацией о данных
+        if telegram_notifier:
+            start_details = f"🤖 Model: MedGemma-{model_name.upper()}\n"
+            start_details += f"🔧 Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}\n"
+            start_details += f"🪟 Window: WL={window_level}, WW={window_width}\n"
+            start_details += f"📁 Data: `{path_pattern}`\n"
+            start_details += f"🐛 Debug Mode: {'ON' if DEBUG_MODE else 'OFF'}\n"
+            if custom_prompt:
+                start_details += f"💬 Custom Prompt: '{custom_prompt[:40]}...'\n"
+            if batch_size:
+                start_details += f"📦 Batch Size: {batch_size}\n"
+            start_details += f"🌍 Language: {language.upper()}"
+            telegram_notifier.send_status("start", start_details)
         
         # Проверяем, является ли это glob-паттерном
         if any(char in path_pattern for char in ['*', '?', '[', ']']):
