@@ -1270,7 +1270,9 @@ def analyze_file_list(file_list, analyzer):
     
     # Отправляем уведомление о начале анализа
     if analyzer.telegram:
-        analyzer.telegram.send_status("analysis_start", f"📋 Files to process: {len(file_list)}\n🔧 Device: {analyzer.device.upper()}\n🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}")
+        print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О НАЧАЛЕ АНАЛИЗА В TELEGRAM...")
+        result = analyzer.telegram.send_status("analysis_start", f"📋 Files to process: {len(file_list)}\n🔧 Device: {analyzer.device.upper()}\n🪟 Window: WL={analyzer.window_level}, WW={analyzer.window_width}")
+        print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ НАЧАЛА: {result}")
     
     # Если один файл - используем analyze_single_file
     if len(file_list) == 1:
@@ -1332,9 +1334,12 @@ def analyze_file_list(file_list, analyzer):
             
             # Уведомление о завершении анализа
             if analyzer.telegram:
-                analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files\n⏱️ Analysis completed successfully")
+                print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О ЗАВЕРШЕНИИ В TELEGRAM...")
+                result = analyzer.telegram.send_status("analysis_complete", f"📊 Processed: {len(results)} files\n⏱️ Analysis completed successfully")
+                print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ ЗАВЕРШЕНИЯ: {result}")
                 
                 # Отправка отчета в Telegram (на английском)
+                print("🔥 ОТПРАВЛЯЮ ОТЧЕТ В TELEGRAM...")
                 report_text = f"**DICOM Analysis Report**\n\n"
                 report_text += f"📋 **Files Processed:** {len(results)}\n"
                 report_text += f"🔧 **Device:** {analyzer.device.upper()}\n"
@@ -1342,7 +1347,8 @@ def analyze_file_list(file_list, analyzer):
                 report_text += f"**ANALYSIS RESULTS:**\n\n"
                 report_text += combined_report['analysis']
                 
-                analyzer.telegram.send_status("report", report_text)
+                result = analyzer.telegram.send_status("report", report_text)
+                print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ ОТЧЕТА: {result}")
             
             print(f"\n📊 ОБЩИЙ ОТЧЕТ ПО {len(results)} ФАЙЛАМ:")
             print("="*80)
@@ -1580,7 +1586,9 @@ def main():
             if batch_size:
                 start_details += f"📦 Batch Size: {batch_size}\n"
             start_details += f"🌍 Language: {language.upper()}"
-            telegram_notifier.send_status("start", start_details)
+            print("🔥 ОТПРАВЛЯЮ УВЕДОМЛЕНИЕ О ЗАПУСКЕ В TELEGRAM...")
+            result = telegram_notifier.send_status("start", start_details)
+            print(f"🔥 РЕЗУЛЬТАТ ОТПРАВКИ: {result}")
         
         # Проверяем, является ли это glob-паттерном
         if any(char in path_pattern for char in ['*', '?', '[', ']']):
