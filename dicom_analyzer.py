@@ -100,25 +100,43 @@ Be thorough but concise. Report both normal and abnormal findings. If any concer
 DEFAULT_ANALYSIS_PROMPT = LANGUAGE_PROMPTS["en"]
 CURRENT_LANGUAGE = "en"
 
-# Промпты для анализа (можно изменить для разных специализаций)
+# ENGLISH VERSION - Normal-Focused CT Analysis Prompts
+ANALYSIS_PROMPTS_EN = {
+    # System prompt - defining the expert role focused on normal findings
+    "system": "You are an expert pulmonologist and chest radiologist specializing in identifying normal lung anatomy and physiology. Your primary expertise is recognizing healthy lung tissue characteristics, normal density ranges (HU values), proper anatomical positioning, and intact thoracic cavity structure. You excel at distinguishing normal variations from pathological changes by first establishing what constitutes normal lung architecture.",
+   
+    # Prompt for single image analysis
+    "single_image": "CRITICAL: Begin by systematically evaluating this chest CT scan for NORMAL lung characteristics. First assess: 1) NORMAL lung density (-950 to -500 HU for healthy lung parenchyma), 2) Appropriate lung size and expansion bilaterally, 3) Normal lung edges conforming to pleural boundaries, 4) Normal bronchial and bronchiolar diameter and wall thickness, 5) Proper mediastinal positioning (no shift), 6) Normal cardiac and great vessel size and position, 7) Intact chest wall and pleural surfaces. ONLY after confirming these normal parameters, identify any deviations: abnormal densities (consolidation +10 to +40 HU, ground-glass -500 to -100 HU, masses >+40 HU), mediastinal shift direction and cause (fluid, gas, mass effect), enlarged structures, or edge irregularities. If lungs meet normal criteria but extra-pulmonary findings exist (breast masses, abdominal findings), classify as NORMAL LUNGS with commentary on incidental findings.",
+   
+    # Prompt for batch analysis (concise)
+    "batch_analysis": "Systematically assess this chest CT for normal lung characteristics first: appropriate density (-950 to -500 HU), proper size/expansion, normal edges within pleural boundaries, standard bronchial caliber, centered mediastinum, normal cardiac size. Then identify any deviations from these normal parameters. If lungs are normal but incidental findings present, classify as normal lungs with notes on extra-pulmonary observations.",
+   
+    # Prompt for series report
+    "series_report": "Based on analysis of {count} chest CT images from a DICOM series, create a comprehensive pulmonary radiological report focused on NORMAL vs ABNORMAL lung classification. First establish normal baseline: lung density (-950 to -500 HU), bilateral symmetry, proper pleural conformity, normal bronchial architecture, centered mediastinum, appropriate organ sizes. Review all individual analyses for patterns:\n\n{analyses}\n\nProvide definitive assessment: Do the lungs meet normal criteria? If deviations exist, specify: density changes (HU values), structural alterations, mediastinal shift direction/cause, size abnormalities. If lungs are normal but extra-pulmonary findings noted, classify as NORMAL LUNGS with incidental findings commentary. Clinical recommendation should reflect lung status primarily.",
+   
+    # System prompt for series report
+    "series_system": "You are an expert pulmonologist and chest radiologist specializing in normal lung anatomy recognition and systematic exclusion of pathology. Your expertise lies in establishing normal baselines first, then identifying deviations that warrant further investigation."
+}
+
+# Промпты для анализа - используем только normal-focused версию
 ANALYSIS_PROMPTS = {
     # Системный промпт - определяет роль эксперта
-    "system": "You are an expert pulmonologist and chest radiologist with extensive experience in detecting pneumonia, COVID-19, and other infectious lung diseases.",
+    "system": ANALYSIS_PROMPTS_EN["system"],
     
     # Единый промпт для всех типов анализа
-    "universal": DEFAULT_ANALYSIS_PROMPT,
+    "universal": ANALYSIS_PROMPTS_EN["single_image"],
     
     # Промпт для анализа отдельного изображения
-    "single_image": DEFAULT_ANALYSIS_PROMPT,
+    "single_image": ANALYSIS_PROMPTS_EN["single_image"],
     
     # Промпт для батчевого анализа (краткий)
-    "batch_analysis": DEFAULT_ANALYSIS_PROMPT,
+    "batch_analysis": ANALYSIS_PROMPTS_EN["batch_analysis"],
     
     # Промпт для общего отчета по серии
-    "series_report": "Based on analysis of {count} chest CT images, create a comprehensive pulmonary radiological report. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment with clinical recommendations.",
+    "series_report": ANALYSIS_PROMPTS_EN["series_report"],
     
     # Системный промпт для общего отчета
-    "series_system": "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease."
+    "series_system": ANALYSIS_PROMPTS_EN["series_system"]
 }
 
 # Параметры генерации текста
@@ -1329,7 +1347,7 @@ def main():
         ANALYSIS_PROMPTS["series_system"] = "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease."
         ANALYSIS_PROMPTS["series_report"] = "Based on analysis of {count} chest CT images, create a comprehensive pulmonary radiological report. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment with clinical recommendations."
     
-    # Применение пользовательского промпта (переопределяет языковой)
+    # Применение пользовательского промпта (переопределяет все остальные)
     if custom_prompt:
         DEFAULT_ANALYSIS_PROMPT = custom_prompt
         ANALYSIS_PROMPTS["universal"] = custom_prompt
