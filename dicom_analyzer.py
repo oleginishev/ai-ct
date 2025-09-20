@@ -1040,6 +1040,17 @@ def main():
         ANALYSIS_PROMPTS["single_image"] = DEFAULT_ANALYSIS_PROMPT
         ANALYSIS_PROMPTS["batch_analysis"] = DEFAULT_ANALYSIS_PROMPT
         
+        # Обновляем системные промпты для выбранного языка
+        if language == "ru":
+            ANALYSIS_PROMPTS["system"] = "Вы - эксперт-пульмонолог и рентгенолог грудной клетки с обширным опытом выявления пневмонии, COVID-19 и других инфекционных заболеваний легких."
+            ANALYSIS_PROMPTS["series_system"] = "Вы - эксперт-пульмонолог и рентгенолог грудной клетки, специализирующийся на выявлении пневмонии и инфекционных заболеваний легких."
+            ANALYSIS_PROMPTS["series_report"] = "На основе анализа {count} изображений КТ грудной клетки создайте комплексный пульмонологический радиологический отчет. Вот индивидуальные анализы:\n\n{analyses}\n\nПредоставьте окончательную оценку с клиническими рекомендациями."
+        else:
+            # Для английского языка оставляем как есть (уже на английском)
+            ANALYSIS_PROMPTS["system"] = "You are an expert pulmonologist and chest radiologist with extensive experience in detecting pneumonia, COVID-19, and other infectious lung diseases."
+            ANALYSIS_PROMPTS["series_system"] = "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease."
+            ANALYSIS_PROMPTS["series_report"] = "Based on analysis of {count} chest CT images, create a comprehensive pulmonary radiological report. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment with clinical recommendations."
+        
         lang_names = {"en": "English", "ru": "Русский"}
         print(f"🌍 Язык ответа: {lang_names.get(language, language.upper())}")
     else:
@@ -1047,6 +1058,13 @@ def main():
         print("🌍 Используется английский язык по умолчанию")
         language = "en"
         DEFAULT_ANALYSIS_PROMPT = LANGUAGE_PROMPTS["en"]
+        # Устанавливаем английские промпты
+        ANALYSIS_PROMPTS["universal"] = DEFAULT_ANALYSIS_PROMPT
+        ANALYSIS_PROMPTS["single_image"] = DEFAULT_ANALYSIS_PROMPT
+        ANALYSIS_PROMPTS["batch_analysis"] = DEFAULT_ANALYSIS_PROMPT
+        ANALYSIS_PROMPTS["system"] = "You are an expert pulmonologist and chest radiologist with extensive experience in detecting pneumonia, COVID-19, and other infectious lung diseases."
+        ANALYSIS_PROMPTS["series_system"] = "You are an expert pulmonologist and chest radiologist specializing in pneumonia detection and infectious lung disease."
+        ANALYSIS_PROMPTS["series_report"] = "Based on analysis of {count} chest CT images, create a comprehensive pulmonary radiological report. Here are the individual analyses:\n\n{analyses}\n\nProvide a definitive assessment with clinical recommendations."
     
     # Применение пользовательского промпта (переопределяет языковой)
     if custom_prompt:
